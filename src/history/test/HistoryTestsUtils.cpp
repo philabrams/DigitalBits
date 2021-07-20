@@ -895,12 +895,12 @@ CatchupSimulation::validateCatchup(Application::pointer app)
     auto& lm = app->getLedgerManager();
     auto nextLedger = lm.getLastClosedLedgerNum() + 1;
 
-    if (nextLedger < 3)
+    if (nextLedger < 4)
     {
         return;
     }
 
-    size_t i = nextLedger - 3;
+    size_t i = nextLedger - 4;
 
     auto root = TestAccount{*app, getRoot(mApp.getNetworkID())};
     auto alice = TestAccount{*app, getAccount("alice")};
