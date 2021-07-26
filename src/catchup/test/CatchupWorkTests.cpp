@@ -234,5 +234,5 @@ TEST_CASE("CatchupRange starting on checkpoint boundary still replays it",
     REQUIRE(crange2.replayLedgers());
     REQUIRE(crange2.getBucketApplyLedger() == 63);
     REQUIRE(crange2.getReplayFirst() == 64);
-    REQUIRE(crange2.getReplayCount() == 2);
+    REQUIRE(crange2.getReplayCount() == 3);
 }
