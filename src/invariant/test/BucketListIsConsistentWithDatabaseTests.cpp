@@ -23,6 +23,7 @@
 #include "work/WorkScheduler.h"
 #include <random>
 #include <vector>
+#include <string>
 
 using namespace digitalbits;
 
@@ -42,7 +43,7 @@ struct BucketListGenerator
     BucketListGenerator()
         : mAppGenerate(createTestApplication(mClock, getTestConfig(0)))
         , mAppApply(createTestApplication(mApplyClock, getTestConfig(1)))
-        , mLedgerSeq(1)
+        , mLedgerSeq(2)
     {
         auto skey = SecretKey::fromSeed(mAppGenerate->getNetworkID());
         LedgerKey key(ACCOUNT);
@@ -589,11 +590,12 @@ TEST_CASE("BucketListIsConsistentWithDatabase added entries",
         BucketListGenerator blg;
         blg.generateLedgers(100);
 
-        std::uniform_int_distribution<uint32_t> addAtLedgerDist(2,
+        std::uniform_int_distribution<uint32_t> addAtLedgerDist(3,
                                                                 blg.mLedgerSeq);
         auto le = LedgerTestUtils::generateValidLedgerEntry(5);
         le.lastModifiedLedgerSeq = addAtLedgerDist(gRandomEngine);
 
+        UNSCOPED_INFO("Test #" + std::to_string(nTests));
         REQUIRE_THROWS_AS(blg.applyBuckets<ApplyBucketsWorkAddEntry>(le),
                           InvariantDoesNotHold);
     }
