@@ -23,7 +23,6 @@
 #include "work/WorkScheduler.h"
 #include <random>
 #include <vector>
-#include <string>
 
 using namespace digitalbits;
 
@@ -595,7 +594,6 @@ TEST_CASE("BucketListIsConsistentWithDatabase added entries",
         auto le = LedgerTestUtils::generateValidLedgerEntry(5);
         le.lastModifiedLedgerSeq = addAtLedgerDist(gRandomEngine);
 
-        UNSCOPED_INFO("Test #" + std::to_string(nTests));
         REQUIRE_THROWS_AS(blg.applyBuckets<ApplyBucketsWorkAddEntry>(le),
                           InvariantDoesNotHold);
     }
