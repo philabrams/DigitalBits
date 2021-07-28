@@ -241,9 +241,9 @@ TEST_CASE("quorum plausible non intersection", "[herder][quorumintersection]")
     PublicKey pkZytara1 = SecretKey::pseudoRandomForTesting().getPublicKey();
     PublicKey pkZytara2 = SecretKey::pseudoRandomForTesting().getPublicKey();
 
-    PublicKey pkSatoshi1 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkSatoshi2 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkSatoshi3 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkStably1 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkStably2 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkStably3 = SecretKey::pseudoRandomForTesting().getPublicKey();
 
     PublicKey pkMantle1 = SecretKey::pseudoRandomForTesting().getPublicKey();
     PublicKey pkMantle2 = SecretKey::pseudoRandomForTesting().getPublicKey();
@@ -254,11 +254,11 @@ TEST_CASE("quorum plausible non intersection", "[herder][quorumintersection]")
     cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkDigitalBits3)] = "DigitalBits3";
     cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkZytara1)] = "Zytara1_Europe";
     cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkZytara2)] = "Zytara2_Europe";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSatoshi1)] =
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkStably1)] =
         "Stably_DE_Frankfurt";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSatoshi2)] =
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkStably2)] =
         "Stably_SG_Singapore";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSatoshi3)] = "Stably_US_Iowa";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkStably3)] = "Stably_US_Iowa";
     cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkMantle1)] = "Mantle_Germany";
     cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkMantle2)] = "Mantle_Finland";
 
@@ -269,7 +269,7 @@ TEST_CASE("quorum plausible non intersection", "[herder][quorumintersection]")
 
     SCPQuorumSet qs2of3DigitalBits(1, VK({pkDigitalBits1, pkDigitalBits2, pkDigitalBits3}), VQ{});
 
-    SCPQuorumSet qs2of3Stably(2, VK({pkSatoshi1, pkSatoshi2, pkSatoshi3}),
+    SCPQuorumSet qs2of3Stably(2, VK({pkStably1, pkStably2, pkStably3}),
                                   VQ{});
 
     // All 3 DigitalBits nodes get this:
@@ -281,15 +281,15 @@ TEST_CASE("quorum plausible non intersection", "[herder][quorumintersection]")
 
     // All Stably nodes get this:
     auto qsStably =
-        make_shared<QS>(4, VK({pkSatoshi1, pkSatoshi2, pkSatoshi3}),
+        make_shared<QS>(4, VK({pkStably1, pkStably2, pkStably3}),
                         VQ({qs2of3DigitalBits, qs1of2Zytara, qs1of2Mantle}));
-    qm[pkSatoshi1] = QuorumTracker::NodeInfo{qsStably, 0};
-    qm[pkSatoshi2] = QuorumTracker::NodeInfo{qsStably, 0};
-    qm[pkSatoshi3] = QuorumTracker::NodeInfo{qsStably, 0};
+    qm[pkStably1] = QuorumTracker::NodeInfo{qsStably, 0};
+    qm[pkStably2] = QuorumTracker::NodeInfo{qsStably, 0};
+    qm[pkStably3] = QuorumTracker::NodeInfo{qsStably, 0};
 
     // All Zytara nodes get this:
     auto qsZytara = make_shared<QS>(
-        5, VK({pkDigitalBits1, pkDigitalBits2, pkDigitalBits3, pkSatoshi1, pkSatoshi2, pkSatoshi3}),
+        5, VK({pkDigitalBits1, pkDigitalBits2, pkDigitalBits3, pkStably1, pkStably2, pkStably3}),
         VQ{});
     qm[pkZytara1] = QuorumTracker::NodeInfo{qsZytara, 0};
     qm[pkZytara2] = QuorumTracker::NodeInfo{qsZytara, 0};
