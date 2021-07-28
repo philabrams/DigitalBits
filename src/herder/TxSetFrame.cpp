@@ -410,7 +410,7 @@ TxSetFrame::checkValid(Application& app, uint64_t lowerBoundCloseTimeOffset,
     {
         CLOG_DEBUG(Herder, "Got bad txSet: {}, expected {}",
                    hexAbbrev(mPreviousLedgerHash), hexAbbrev(lcl.hash));
-        mValid = make_optional<std::pair<Hash, bool>>(lcl.hash, false);
+        mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
         return false;
     }
 
@@ -418,7 +418,7 @@ TxSetFrame::checkValid(Application& app, uint64_t lowerBoundCloseTimeOffset,
     {
         CLOG_DEBUG(Herder, "Got bad txSet: too many txs {} > {}",
                    this->size(lcl.header), lcl.header.maxTxSetSize);
-        mValid = make_optional<std::pair<Hash, bool>>(lcl.hash, false);
+        mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
         return false;
     }
 
@@ -429,14 +429,14 @@ TxSetFrame::checkValid(Application& app, uint64_t lowerBoundCloseTimeOffset,
     {
         CLOG_DEBUG(Herder, "Got bad txSet: {} not sorted correctly",
                    hexAbbrev(mPreviousLedgerHash));
-        mValid = make_optional<std::pair<Hash, bool>>(lcl.hash, false);
+        mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
         return false;
     }
 
     std::vector<TransactionFrameBasePtr> trimmed;
     bool valid = checkOrTrim(app, trimmed, true, lowerBoundCloseTimeOffset,
                              upperBoundCloseTimeOffset);
-    mValid = make_optional<std::pair<Hash, bool>>(lcl.hash, valid);
+    mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, valid);
     return valid;
 }
 
@@ -463,7 +463,7 @@ TxSetFrame::getContentsHash()
         {
             hasher.add(xdr::xdr_to_opaque(mTransactions[n]->getEnvelope()));
         }
-        mHash = make_optional<Hash>(hasher.finish());
+        mHash = digitalbits::make_optional<Hash>(hasher.finish());
     }
     return *mHash;
 }

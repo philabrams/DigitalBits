@@ -1001,11 +1001,11 @@ HerderSCPDriver::recordSCPEvent(uint64_t slotIndex, bool isNomination)
     if (isNomination)
     {
         timing.mNominationStart =
-            make_optional<VirtualClock::time_point>(start);
+            digitalbits::make_optional<VirtualClock::time_point>(start);
     }
     else
     {
-        timing.mPrepareStart = make_optional<VirtualClock::time_point>(start);
+        timing.mPrepareStart = digitalbits::make_optional<VirtualClock::time_point>(start);
     }
 }
 
@@ -1018,7 +1018,7 @@ HerderSCPDriver::recordSCPExternalizeEvent(uint64_t slotIndex, NodeID const& id,
 
     if (!timing.mFirstExternalize)
     {
-        timing.mFirstExternalize = make_optional<VirtualClock::time_point>(now);
+        timing.mFirstExternalize = digitalbits::make_optional<VirtualClock::time_point>(now);
     }
 
     if (id == mSCP.getLocalNodeID())
@@ -1032,7 +1032,7 @@ HerderSCPDriver::recordSCPExternalizeEvent(uint64_t slotIndex, NodeID const& id,
         if (!timing.mSelfExternalize || forceUpdateSelf)
         {
             timing.mSelfExternalize =
-                make_optional<VirtualClock::time_point>(now);
+                digitalbits::make_optional<VirtualClock::time_point>(now);
         }
     }
     else

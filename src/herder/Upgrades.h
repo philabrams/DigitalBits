@@ -36,11 +36,11 @@ class Upgrades
         {
             mUpgradeTime = cfg.TESTING_UPGRADE_DATETIME;
             mProtocolVersion =
-                make_optional<uint32>(cfg.LEDGER_PROTOCOL_VERSION);
-            mBaseFee = make_optional<uint32>(cfg.TESTING_UPGRADE_DESIRED_FEE);
+                digitalbits::make_optional<uint32>(cfg.LEDGER_PROTOCOL_VERSION);
+            mBaseFee = digitalbits::make_optional<uint32>(cfg.TESTING_UPGRADE_DESIRED_FEE);
             mMaxTxSize =
-                make_optional<uint32>(cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE);
-            mBaseReserve = make_optional<uint32>(cfg.TESTING_UPGRADE_RESERVE);
+                digitalbits::make_optional<uint32>(cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE);
+            mBaseReserve = digitalbits::make_optional<uint32>(cfg.TESTING_UPGRADE_RESERVE);
         }
         VirtualClock::system_time_point mUpgradeTime;
         optional<uint32> mProtocolVersion;
