@@ -234,72 +234,72 @@ TEST_CASE("quorum plausible non intersection", "[herder][quorumintersection]")
 {
     QuorumTracker::QuorumMap qm;
 
-    PublicKey pkSDF1 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkSDF2 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkSDF3 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkDigitalBits1 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkDigitalBits2 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkDigitalBits3 = SecretKey::pseudoRandomForTesting().getPublicKey();
 
-    PublicKey pkLOBSTR1 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkLOBSTR2 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkZytara1 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkZytara2 = SecretKey::pseudoRandomForTesting().getPublicKey();
 
-    PublicKey pkSatoshi1 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkSatoshi2 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkSatoshi3 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkStably1 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkStably2 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkStably3 = SecretKey::pseudoRandomForTesting().getPublicKey();
 
-    PublicKey pkCOINQVEST1 = SecretKey::pseudoRandomForTesting().getPublicKey();
-    PublicKey pkCOINQVEST2 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkMantle1 = SecretKey::pseudoRandomForTesting().getPublicKey();
+    PublicKey pkMantle2 = SecretKey::pseudoRandomForTesting().getPublicKey();
 
     Config cfg(getTestConfig());
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSDF1)] = "SDF1";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSDF2)] = "SDF2";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSDF3)] = "SDF3";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkLOBSTR1)] = "LOBSTR1_Europe";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkLOBSTR2)] = "LOBSTR2_Europe";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSatoshi1)] =
-        "SatoshiPay_DE_Frankfurt";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSatoshi2)] =
-        "SatoshiPay_SG_Singapore";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkSatoshi3)] = "SatoshiPay_US_Iowa";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkCOINQVEST1)] = "COINQVEST_Germany";
-    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkCOINQVEST2)] = "COINQVEST_Finland";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkDigitalBits1)] = "DigitalBits1";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkDigitalBits2)] = "DigitalBits2";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkDigitalBits3)] = "DigitalBits3";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkZytara1)] = "Zytara1_Europe";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkZytara2)] = "Zytara2_Europe";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkStably1)] =
+        "Stably_DE_Frankfurt";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkStably2)] =
+        "Stably_SG_Singapore";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkStably3)] = "Stably_US_Iowa";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkMantle1)] = "Mantle_Germany";
+    cfg.VALIDATOR_NAMES[KeyUtils::toStrKey(pkMantle2)] = "Mantle_Finland";
 
     // Some innersets used in quorums below.
 
-    SCPQuorumSet qs1of2LOBSTR(1, VK({pkLOBSTR1, pkLOBSTR2}), VQ{});
-    SCPQuorumSet qs1of2COINQVEST(1, VK({pkCOINQVEST1, pkCOINQVEST2}), VQ{});
+    SCPQuorumSet qs1of2Zytara(1, VK({pkZytara1, pkZytara2}), VQ{});
+    SCPQuorumSet qs1of2Mantle(1, VK({pkMantle1, pkMantle2}), VQ{});
 
-    SCPQuorumSet qs2of3SDF(1, VK({pkSDF1, pkSDF2, pkSDF3}), VQ{});
+    SCPQuorumSet qs2of3DigitalBits(1, VK({pkDigitalBits1, pkDigitalBits2, pkDigitalBits3}), VQ{});
 
-    SCPQuorumSet qs2of3SatoshiPay(2, VK({pkSatoshi1, pkSatoshi2, pkSatoshi3}),
+    SCPQuorumSet qs2of3Stably(2, VK({pkStably1, pkStably2, pkStably3}),
                                   VQ{});
 
-    // All 3 SDF nodes get this:
-    auto qsSDF = make_shared<QS>(3, VK({pkSDF1, pkSDF2, pkSDF3}),
-                                 VQ({qs1of2LOBSTR, qs2of3SatoshiPay}));
-    qm[pkSDF1] = QuorumTracker::NodeInfo{qsSDF, 0};
-    qm[pkSDF2] = QuorumTracker::NodeInfo{qsSDF, 0};
-    qm[pkSDF3] = QuorumTracker::NodeInfo{qsSDF, 0};
+    // All 3 DigitalBits nodes get this:
+    auto qsDigitalBits = make_shared<QS>(3, VK({pkDigitalBits1, pkDigitalBits2, pkDigitalBits3}),
+                                 VQ({qs1of2Zytara, qs2of3Stably}));
+    qm[pkDigitalBits1] = QuorumTracker::NodeInfo{qsDigitalBits, 0};
+    qm[pkDigitalBits2] = QuorumTracker::NodeInfo{qsDigitalBits, 0};
+    qm[pkDigitalBits3] = QuorumTracker::NodeInfo{qsDigitalBits, 0};
 
-    // All SatoshiPay nodes get this:
-    auto qsSatoshiPay =
-        make_shared<QS>(4, VK({pkSatoshi1, pkSatoshi2, pkSatoshi3}),
-                        VQ({qs2of3SDF, qs1of2LOBSTR, qs1of2COINQVEST}));
-    qm[pkSatoshi1] = QuorumTracker::NodeInfo{qsSatoshiPay, 0};
-    qm[pkSatoshi2] = QuorumTracker::NodeInfo{qsSatoshiPay, 0};
-    qm[pkSatoshi3] = QuorumTracker::NodeInfo{qsSatoshiPay, 0};
+    // All Stably nodes get this:
+    auto qsStably =
+        make_shared<QS>(4, VK({pkStably1, pkStably2, pkStably3}),
+                        VQ({qs2of3DigitalBits, qs1of2Zytara, qs1of2Mantle}));
+    qm[pkStably1] = QuorumTracker::NodeInfo{qsStably, 0};
+    qm[pkStably2] = QuorumTracker::NodeInfo{qsStably, 0};
+    qm[pkStably3] = QuorumTracker::NodeInfo{qsStably, 0};
 
-    // All LOBSTR nodes get this:
-    auto qsLOBSTR = make_shared<QS>(
-        5, VK({pkSDF1, pkSDF2, pkSDF3, pkSatoshi1, pkSatoshi2, pkSatoshi3}),
+    // All Zytara nodes get this:
+    auto qsZytara = make_shared<QS>(
+        5, VK({pkDigitalBits1, pkDigitalBits2, pkDigitalBits3, pkStably1, pkStably2, pkStably3}),
         VQ{});
-    qm[pkLOBSTR1] = QuorumTracker::NodeInfo{qsLOBSTR, 0};
-    qm[pkLOBSTR2] = QuorumTracker::NodeInfo{qsLOBSTR, 0};
+    qm[pkZytara1] = QuorumTracker::NodeInfo{qsZytara, 0};
+    qm[pkZytara2] = QuorumTracker::NodeInfo{qsZytara, 0};
 
-    // All COINQVEST nodes get this:
-    auto qsCOINQVEST =
-        make_shared<QS>(3, VK({pkCOINQVEST1, pkCOINQVEST2}),
-                        VQ({qs2of3SDF, qs2of3SatoshiPay, qs1of2LOBSTR}));
-    qm[pkCOINQVEST1] = QuorumTracker::NodeInfo{qsCOINQVEST, 0};
-    qm[pkCOINQVEST2] = QuorumTracker::NodeInfo{qsCOINQVEST, 0};
+    // All Mantle nodes get this:
+    auto qsMantle =
+        make_shared<QS>(3, VK({pkMantle1, pkMantle2}),
+                        VQ({qs2of3DigitalBits, qs2of3Stably, qs1of2Zytara}));
+    qm[pkMantle1] = QuorumTracker::NodeInfo{qsMantle, 0};
+    qm[pkMantle2] = QuorumTracker::NodeInfo{qsMantle, 0};
 
     std::atomic<bool> flag{false};
     auto qic = QuorumIntersectionChecker::create(qm, cfg, flag);
