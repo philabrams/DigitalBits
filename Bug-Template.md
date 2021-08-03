@@ -17,28 +17,49 @@
 *output of `info` or tag/release you downloaded if you can't get info to work*
 example:
 ```json
-{
+
    "info" : {
-      "build" : "v0.2.4-20-g5167ebe",
+      "build" : "1.0.5-1-g7f8dc82",
+      "history_failure_rate" : "0.0",
       "ledger" : {
          "age" : 4,
-         "closeTime" : 1447350367,
-         "hash" : "cfac9f704a48e71377e451a7b8acbcef51fb5f7dd9840ae741bea7030cb70e6c",
-         "num" : 694470
+         "baseFee" : 100,
+         "baseReserve" : 100000000,
+         "closeTime" : 1627382327,
+         "hash" : "3641c406ccd7a03d26d966a09a5ffcdc77344fe3c581d77f7c0ca079e69de48d",
+         "maxTxSetSize" : 100,
+         "num" : 1709699,
+         "version" : 15
       },
-      "network" : "Test SDF Network ; September 2015",
-      "numPeers" : 4,
-      "protocol_version" : 1,
+      "network" : "LiveNet Global DigitalBits Network ; February 2021",
+      "peers" : {
+         "authenticated_count" : 14,
+         "pending_count" : 0
+      },
+      "protocol_version" : 15,
       "quorum" : {
-         "694469" : {
-            "agree" : 3,
+         "node" : "self",
+         "qset" : {
+            "agree" : 12,
+            "cost" : 68552,
+            "delayed" : 0,
             "disagree" : 0,
-            "fail_at" : 2,
-            "hash" : "273af2",
+            "fail_at" : 3,
+            "hash" : "bd50f0",
+            "lag_ms" : 122,
+            "ledger" : 1709698,
             "missing" : 0,
-            "phase" : "EXTERNALIZE"
+            "phase" : "EXTERNALIZE",
+            "validated" : true
+         },
+         "transitive" : {
+            "critical" : null,
+            "intersection" : true,
+            "last_check_ledger" : 1428350,
+            "node_count" : 12
          }
       },
+      "startedOn" : "2021-07-10T06:25:36Z",
       "state" : "Synced!"
    }
 }
