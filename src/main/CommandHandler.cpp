@@ -167,7 +167,7 @@ CommandHandler::fileNotFound(std::string const& params, std::string& retStr)
 }
 
 template <typename T>
-optional<T>
+digitalbits::optional<T>
 parseOptionalParam(std::map<std::string, std::string> const& map,
                    std::string const& key)
 {
@@ -185,7 +185,7 @@ parseOptionalParam(std::map<std::string, std::string> const& map,
                 fmt::format("Failed to parse '{}' argument", key);
             throw std::runtime_error(errorMsg);
         }
-        return make_optional<T>(val);
+        return digitalbits::make_optional<T>(val);
     }
 
     return nullopt<T>();

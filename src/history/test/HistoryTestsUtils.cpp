@@ -629,7 +629,7 @@ CatchupSimulation::getAllPublishedCheckpoints() const
         {
             LedgerNumHashPair pair;
             pair.first = *si;
-            pair.second = make_optional<Hash>(*hi);
+            pair.second = digitalbits::make_optional<Hash>(*hi);
             res.emplace_back(pair);
         }
         ++hi;
@@ -651,7 +651,7 @@ CatchupSimulation::getLastPublishedCheckpoint() const
         if (hm.isLastLedgerInCheckpoint(*si))
         {
             pair.first = *si;
-            pair.second = make_optional<Hash>(*hi);
+            pair.second = digitalbits::make_optional<Hash>(*hi);
             break;
         }
         ++hi;

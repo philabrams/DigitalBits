@@ -321,10 +321,10 @@ maybeEnableInMemoryLedgerMode(Config& config, bool inMemory,
         config.MODE_AUTO_STARTS_OVERLAY = false;
         LedgerNumHashPair pair;
         pair.first = startAtLedger;
-        pair.second = make_optional<Hash>(hexToBin256(startAtHash));
+        pair.second = digitalbits::make_optional<Hash>(hexToBin256(startAtHash));
         uint32_t count = 0;
         auto mode = CatchupConfiguration::Mode::OFFLINE_COMPLETE;
-        return make_optional<CatchupConfiguration>(pair, count, mode);
+        return digitalbits::make_optional<CatchupConfiguration>(pair, count, mode);
     }
     return nullptr;
 }
@@ -544,7 +544,7 @@ CommandLine::selectCommand(std::string const& commandName)
         [&](Command const& command) { return command.name() == commandName; });
     if (command != std::end(mCommands))
     {
-        return make_optional<Command>(*command);
+        return digitalbits::make_optional<Command>(*command);
     }
 
     command = std::find_if(
@@ -552,7 +552,7 @@ CommandLine::selectCommand(std::string const& commandName)
         [&](Command const& command) { return command.name() == "help"; });
     if (command != std::end(mCommands))
     {
-        return make_optional<Command>(*command);
+        return digitalbits::make_optional<Command>(*command);
     }
     return nullopt<Command>();
 }
@@ -713,7 +713,7 @@ runCatchup(CommandLineArgs const& args)
                     }
                     LedgerNumHashPair pair;
                     pair.first = cc.toLedger();
-                    pair.second = make_optional<Hash>(h);
+                    pair.second = digitalbits::make_optional<Hash>(h);
                     LOG_INFO(DEFAULT_LOG, "Found trusted hash {} for ledger {}",
                              hexAbbrev(h), cc.toLedger());
                     cc = CatchupConfiguration(pair, cc.count(), cc.mode());
@@ -799,7 +799,7 @@ runWriteVerifiedCheckpointHashes(CommandLineArgs const& args)
                         "Found authenticated checkpoint hash {} for ledger {}",
                         hexAbbrev(h), seq);
                     authPair.first = seq;
-                    authPair.second = make_optional<Hash>(h);
+                    authPair.second = digitalbits::make_optional<Hash>(h);
                 }
                 else if (authPair.first != seq)
                 {

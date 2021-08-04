@@ -90,7 +90,7 @@ CatchupWork::doReset()
     mApplyBufferedLedgersWork.reset();
     auto const& lcl = mApp.getLedgerManager().getLastClosedLedgerHeader();
     mLastClosedLedgerHashPair =
-        LedgerNumHashPair(lcl.header.ledgerSeq, make_optional<Hash>(lcl.hash));
+        LedgerNumHashPair(lcl.header.ledgerSeq, digitalbits::make_optional<Hash>(lcl.hash));
     mCatchupSeq.reset();
     mGetBucketStateWork.reset();
     mVerifyTxResults.reset();
