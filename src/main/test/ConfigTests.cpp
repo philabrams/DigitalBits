@@ -9,9 +9,11 @@
 #include "scp/QuorumSetUtils.h"
 #include "test/test.h"
 #include "util/Math.h"
+#include <filesystem>
 #include <fmt/format.h>
 
 using namespace digitalbits;
+namespace fs = std::filesystem;
 
 namespace
 {
@@ -22,6 +24,21 @@ keyMatches(PublicKey& key, const std::vector<std::string>& keys)
     auto keyStr = KeyUtils::toStrKey<PublicKey>(key);
     return std::any_of(std::begin(keys), std::end(keys),
                        [&](const std::string& x) { return keyStr == x; });
+}
+
+std::string getTestDataFolder() 
+{
+    fs::path cwd = fs::current_path();
+
+    std::string testDataPath = "";
+
+    if (cwd.filename() != "src") {
+        testDataPath = "src/testdata/";
+    } else {
+        testDataPath = "testdata/";
+    }
+
+    return testDataPath;
 }
 }
 
@@ -146,7 +163,8 @@ TEST_CASE("resolve node id", "[config]")
 TEST_CASE("load validators config", "[config]")
 {
     Config c;
-    c.load("testdata/digitalbits-core_example_validators.cfg");
+    auto fnPath = getTestDataFolder();
+    c.load(fnPath + "digitalbits-core_example_validators.cfg");
     auto actualS = c.toString(c.QUORUM_SET);
     std::string expected = R"({
    "t" : 4,
@@ -392,7 +410,7 @@ TEST_CASE("load example configs", "[config]")
         "digitalbits-core_testnet_legacy.cfg", "digitalbits-core_testnet.cfg"};
     for (auto const& fn : testFiles)
     {
-        std::string fnPath = "testdata/";
+        std::string fnPath = getTestDataFolder();
         fnPath += fn;
         SECTION("load config " + fnPath)
         {
