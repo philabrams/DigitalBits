@@ -360,7 +360,7 @@ TEST_CASE("inflation", "[tx][inflation]")
     SECTION("total coins")
     {
         REQUIRE(getFeePool() == 0);
-        REQUIRE(getTotalCoins() == 1000000000000000000);
+        REQUIRE(getTotalCoins() == 200000000000000000);
 
         auto voter1 = TestAccount{*app, getAccount("voter1"), 0};
         auto voter2 = TestAccount{*app, getAccount("voter2"), 0};
@@ -378,22 +378,22 @@ TEST_CASE("inflation", "[tx][inflation]")
         auto target1tx = root.tx({createAccount(target1, minBalance)});
         auto target2tx = root.tx({createAccount(target2, minBalance)});
 
-        closeLedgerOn(*app, 2, 21, 7, 2014,
+        closeLedgerOn(*app, 3, 21, 7, 2014,
                       {voter1tx, voter2tx, target1tx, target2tx});
 
         REQUIRE(getFeePool() == 1000000299);
-        REQUIRE(getTotalCoins() == 1000000000000000000);
+        REQUIRE(getTotalCoins() == 200000000000000000);
 
         auto setInflationDestination1 = voter1.tx(
             {setOptions(setInflationDestination(target1.getPublicKey()))});
         auto setInflationDestination2 = voter2.tx(
             {setOptions(setInflationDestination(target2.getPublicKey()))});
 
-        closeLedgerOn(*app, 3, 21, 7, 2014,
+        closeLedgerOn(*app, 4, 21, 7, 2014,
                       {setInflationDestination1, setInflationDestination2});
 
         REQUIRE(getFeePool() == 1000000499);
-        REQUIRE(getTotalCoins() == 1000000000000000000);
+        REQUIRE(getTotalCoins() == 200000000000000000);
 
         auto beforeInflationRoot = root.getBalance();
         auto beforeInflationVoter1 = voter1.getBalance();
