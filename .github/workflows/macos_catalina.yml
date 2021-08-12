@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 jobs:
   macosbuild:
-    runs-on: macos-10.15
+    runs-on: macos-11
     steps:
       - uses: actions/checkout@v2
         with:
@@ -16,22 +16,17 @@ jobs:
         run: |
           brew install automake
           brew install libpqxx 
-          brew install autoconf 
           brew install pandoc 
-          brew install pkg-config 
-          brew install parallel 
-          brew install libpq 
-          brew install libpqxx
-          brew install libsodium
           brew install bison 
           brew install flex
           brew install llvm
 
       - name: Build the app    
         run: |
-          export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-          export CFLAGS="-O3 -g1 -fno-omit-frame-pointer -stdlib=libc++"
-          export CXXFLAGS="-O3 -g1 -fno-omit-frame-pointer -stdlib=libc++"
+          export CC=clang-10
+          export CXX=clang++-10
+          export CFLAGS="-O3 -g1 -fno-omit-frame-pointer"
+          export CXXFLAGS="$CFLAGS -stdlib=libc++"
           ./autogen.sh
           ./configure  
           make -j2
