@@ -1,4 +1,4 @@
-name: Build For All Platforms
+name: Build For MacOS catalina
 # Controls when the action will run. 
 on:
   push:
@@ -18,7 +18,7 @@ jobs:
           brew install libpqxx 
           brew install autoconf 
           brew install pandoc 
-          brew isntall pkg-config 
+          brew install pkg-config 
           brew install parallel 
           brew install libpq 
           brew install libpqxx
