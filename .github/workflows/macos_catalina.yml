@@ -1,0 +1,37 @@
+name: Build For All Platforms
+# Controls when the action will run. 
+on:
+  push:
+    branches-ignore:
+      - master
+  workflow_dispatch:
+jobs:
+  macosbuild:
+    runs-on: macos-10.15
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: '0'
+      - name: Install deps
+        run: |
+          brew install automake
+          brew install libpqxx 
+          brew install autoconf 
+          brew install pandoc 
+          brew isntall pkg-config 
+          brew install parallel 
+          brew install libpq 
+          brew install libpqxx
+          brew install libsodium
+          brew install bison 
+          brew install flex
+          brew install llvm
+
+      - name: Build the app    
+        run: |
+          export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
+          export CFLAGS="-O3 -g1 -fno-omit-frame-pointer"
+          export CXXFLAGS="-O3 -g1 -fno-omit-frame-pointer"
+          ./autogen.sh
+          ./configure  
+          make -j2
