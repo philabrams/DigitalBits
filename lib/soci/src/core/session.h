@@ -78,7 +78,7 @@ public:
     template <typename T>
     void set_query_transformation(T callback)
     {
-        std::auto_ptr<details::query_transformation_function> qtf(new details::query_transformation<T>(callback));
+        soci::cxx_details::auto_ptr<details::query_transformation_function> qtf(new details::query_transformation<T>(callback));
         set_query_transformation_(qtf);
 
         assert(qtf.get() == NULL);
