@@ -10,6 +10,10 @@
 // ASIO is somewhat particular about when it gets included -- it wants to be the
 // first to include <windows.h> -- so we try to include it before everything
 // else.
+
+#include <algorithm>
+#include <random>
+
 #include "util/asio.h"
 #include "bucket/BucketTests.h"
 #include "bucket/Bucket.h"
@@ -272,7 +276,11 @@ TEST_CASE("merging bucket entries", "[bucket]")
                 app->getBucketManager(), getAppLedgerVersion(app), {}, live,
                 dead, /*countMergeEvents=*/true, clock.getIOContext(),
                 /*doFsync=*/true);
-            std::random_shuffle(live.begin(), live.end());
+
+            std::random_device rd;
+            std::mt19937 g(rd());
+            std::shuffle(live.begin(), live.end(), g);
+
             size_t liveCount = live.size();
             for (auto& e : live)
             {

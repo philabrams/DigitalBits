@@ -8,6 +8,7 @@
 #ifndef SOCI_SESSION_H_INCLUDED
 #define SOCI_SESSION_H_INCLUDED
 
+#include "soci-platform.h"
 #include "once-temp-type.h"
 #include "query_transformation.h"
 #include "connection-parameters.h"
@@ -40,7 +41,7 @@ class SOCI_DECL session
 {
 private:
 
-    void set_query_transformation_(std::auto_ptr<details::query_transformation_function> qtf);
+    void set_query_transformation_(soci::cxx_details::auto_ptr<details::query_transformation_function>& qtf);
 
 public:
     session();
