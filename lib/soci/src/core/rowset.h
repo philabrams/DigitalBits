@@ -8,6 +8,7 @@
 #ifndef SOCI_ROWSET_H_INCLUDED
 #define SOCI_ROWSET_H_INCLUDED
 
+#include "soci-platform.h"
 #include "statement.h"
 // std
 #include <iterator>
@@ -154,8 +155,8 @@ private:
 
     unsigned int refs_;
 
-    const std::auto_ptr<statement> st_;
-    const std::auto_ptr<T> define_;
+    const soci::cxx_details::auto_ptr<statement> st_;
+    const soci::cxx_details::auto_ptr<T> define_;
 
     // Non-copyable
     rowset_impl(rowset_impl const &);
