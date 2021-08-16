@@ -22,11 +22,18 @@ jobs:
           sudo apt-get install git build-essential alien pkg-config \
           autoconf automake libtool bison flex libpq-dev libunwind-dev \
           parallel gcc-8 g++-8 cpp-8 unzip curl
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v1
+        with:
+          languages: cpp
+
       - name: Build the app    
         run: |
            ./autogen.sh
            ./configure  
            make -j`nproc`
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v1
 
   macosbuild:
     runs-on: macos-latest
