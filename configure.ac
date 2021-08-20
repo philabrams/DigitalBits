@@ -43,7 +43,22 @@ AC_LANG(C++)
 # if modifying the following macro for a future C++ version, please update CXX
 # for enable-afl in the fuzzer configuration block below
 AX_CXX_COMPILE_STDCXX_17(noext,mandatory)
-AX_FRESH_COMPILER
+
+case "${host_os}" in
+    linux*)
+        AX_FRESH_COMPILER
+        ;;
+    cygwin*|mingw*)
+        AX_FRESH_COMPILER
+        ;;
+    darwin*)
+        # skip this check for OS X
+        ;;
+    *)
+        AC_MSG_ERROR(["OS $host_os is not supported"])
+        ;;
+esac
+
 # -pthread seems to be required by -std=c++14 on some hosts
 AX_APPEND_COMPILE_FLAGS([-pthread])
 
