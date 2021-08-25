@@ -1,5 +1,58 @@
 Installation Instructions
+
 ==================
+## Prebuild software
+DigitalBits.io publishes software packages to the cloudsmith.io repository https://cloudsmith.io/~xdb-foundation/repos/digitalbits-core/packages/
+
+Packages available as:
+   - .deb and .rpm packages and 
+   - prebuild binaries for windows, linux and macos
+   - docker image.  
+
+digitalbits-core 1.0.46 version
+
+## Ubuntu
+
+1. Configure digitalbits-core repository from cloudsmith.io:
+
+    curl -1sLf 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/setup.deb.sh' | sudo -E bash
+
+2. Install digitalbits-core package:
+
+    sudo apt-get install digitalbits-core=1.0.46
+
+
+## RPM 
+1. Configure digitalbits-core repository from cloudsmith.io:
+
+    curl -1sLf 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/setup.rpm.sh' | sudo -E bash
+
+2. Install digitalbits-core package:
+
+    sudo yum install digitalbits-core-1.0.46-1.x86_64
+
+## Raw binaries
+
+- MacOS
+
+    curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_1.0.46_darwin-amd64.tar.gz'
+
+- Linux
+
+    curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_1.0.46_linux-amd64.tar.gz'
+
+- Windows
+
+    curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_1.0.46_windows-amd64.tar.gz'
+
+
+## Docker image
+
+    docker pull docker.cloudsmith.io/xdb-foundation/digitalbits-core/digitalbits-core:1.0.46
+
+==================
+## From sources
+
 These are intructions for building digitalbits-core from source. For a potentially quicker set up we also have digitalbits-core in a docker container:
 
 Use docker to build the app:
