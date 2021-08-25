@@ -9,7 +9,7 @@ Packages available as:
    - prebuild binaries for windows, linux and macos
    - docker image.  
 
-## Ubuntu
+## DEB-based
 
 1. Configure digitalbits-core repository from cloudsmith.io:
 
@@ -20,7 +20,7 @@ Packages available as:
         sudo apt-get install digitalbits-core=1.0.46
 
 
-## RPM 
+## RPM-based
 1. Configure digitalbits-core repository from cloudsmith.io:
 
         curl -1sLf 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/setup.rpm.sh' | sudo -E bash
