@@ -595,7 +595,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         auto b1 = root.create("b1", paymentAmount);
                         a1.pay(b1, 1000);
 
-                        closeLedgerOn(*app, 2, 1, 1, 2016);
+                        closeLedgerOn(*app, 3, 1, 1, 2016);
 
                         auto runTest = [&](bool txAccountMissing) {
                             // Create merge tx
@@ -633,7 +633,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                             REQUIRE(getAccountSigners(root, *app).size() == 1);
 
                             // merge b1 into a1 and attempt the payment tx
-                            auto r = closeLedgerOn(*app, 3, 1, 2, 2016,
+                            auto r = closeLedgerOn(*app, 4, 1, 2, 2016,
                                                    {txMerge, tx});
 
                             if (txAccountMissing)
@@ -692,7 +692,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         auto b1 = root.create("b1", paymentAmount);
                         a1.pay(b1, 1000);
 
-                        closeLedgerOn(*app, 2, 1, 1, 2016);
+                        closeLedgerOn(*app, 3, 1, 1, 2016);
 
                         for_versions_from(3, *app, [&] {
                             auto tx = b1.tx({accountMerge(a1)},
@@ -940,12 +940,12 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         };
                         for_versions(3, 9, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() == 1);
                         });
                         for_versions_from(10, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() ==
                                     (alternative.autoRemove ? 0 : 1));
                         });
@@ -971,12 +971,12 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         };
                         for_versions(3, 9, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() == 1);
                         });
                         for_versions_from(10, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() ==
                                     (alternative.autoRemove ? 0 : 1));
                         });
@@ -1498,7 +1498,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
             LedgerCloseData ledgerData(1, txSet, sv);
             app->getLedgerManager().closeLedger(ledgerData);
 
-            REQUIRE(app->getLedgerManager().getLastClosedLedgerNum() == 2);
+            REQUIRE(app->getLedgerManager().getLastClosedLedgerNum() == 3);
         };
 
         {
@@ -1557,7 +1557,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMinTime(txFrame, start + 1000);
                         setMaxTime(txFrame, start + 10000);
 
-                        closeLedgerOn(*app, 3, start + 1);
+                        closeLedgerOn(*app, 4, start + 1);
                         applyCheck(txFrame, *app);
 
                         REQUIRE(txFrame->getResultCode() == txTOO_EARLY);
@@ -1572,7 +1572,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         getSignatures(txFrame).clear();
                         txFrame->addSignature(root);
 
-                        closeLedgerOn(*app, 3, start + 1);
+                        closeLedgerOn(*app, 4, start + 1);
                         applyCheck(txFrame, *app);
                         REQUIRE(txFrame->getResultCode() == txSUCCESS);
                     }
@@ -1584,7 +1584,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMinTime(txFrame, 1000);
                         setMaxTime(txFrame, start);
 
-                        closeLedgerOn(*app, 3, start + 1);
+                        closeLedgerOn(*app, 4, start + 1);
                         applyCheck(txFrame, *app);
                         REQUIRE(txFrame->getResultCode() == txTOO_LATE);
                     }
@@ -1597,7 +1597,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMaxTime(txFrame, 0);
 
                         TimePoint lastClose = getTestDate(1, 1, 2020);
-                        closeLedgerOn(*app, 3, lastClose);
+                        closeLedgerOn(*app, 4, lastClose);
 
                         TimePoint const nextOffset = 2;
                         auto const nextClose = lastClose + nextOffset;
@@ -1666,7 +1666,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         getSignatures(txFrame).clear();
                         txFrame->addSignature(root);
 
-                        closeLedgerOn(*app, 3, 3, 7, 2014);
+                        closeLedgerOn(*app, 4, 3, 7, 2014);
 
                         auto closeTime = app->getLedgerManager()
                                              .getLastClosedLedgerHeader()
@@ -1806,7 +1806,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
         SECTION("merge one of signing accounts")
         {
             a.setOptions(setMasterWeight(0) | setSigner(makeSigner(b, 1)));
-            closeLedgerOn(*app, 2, 1, 1, 2016);
+            closeLedgerOn(*app, 3, 1, 1, 2016);
 
             SECTION("by destination")
             {
@@ -2000,7 +2000,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                     tx2->addSignature(b);
 
                     auto r =
-                        closeLedgerOn(*app, 2, 1, 2, 2016, {tx1, tx2}, true);
+                        closeLedgerOn(*app, 3, 1, 2, 2016, {tx1, tx2}, true);
 
                     REQUIRE(tx1->getResultCode() == txSUCCESS);
                     REQUIRE(tx2->getResultCode() == txFAILED);

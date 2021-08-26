@@ -237,6 +237,7 @@ LedgerManagerImpl::startNewLedger(LedgerHeader const& genesisLedger)
 
     CLOG_INFO(Ledger, "Established genesis ledger, closing");
     CLOG_INFO(Ledger, "Root account seed: {}", skey.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Root account ID: {}", digitalbits::binToHex(rootAccount.accountID.ed25519()));
 
     ledgerClosed(ltx);
     ltx.commit();
@@ -272,6 +273,8 @@ LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
     ltx.loadHeader().current() = feeLedger;
     ltx.loadHeader().current().previousLedgerHash = mLastClosedLedger.hash;
 
+    CLOG_INFO(Ledger, "startFeeLedger::Genesis Ledger hash {}",  digitalbits::binToHex(mLastClosedLedger.hash));
+
     feePoolEntry.lastModifiedLedgerSeq = 2;
     feePoolEntry.data.type(ACCOUNT);
     auto& fpAccount = feePoolEntry.data.account();
@@ -280,6 +283,10 @@ LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
     fpAccount.balance = 100;
 
     ltx.create(feePoolEntry);
+
+    CLOG_INFO(Ledger, "Established fee ledger, closing");
+    CLOG_INFO(Ledger, "Root account seed: {}", fskey.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Root account ID: {}", digitalbits::binToHex(fpAccount.accountID.ed25519()));
 
     ledgerClosed(ltx);
     ltx.commit();
