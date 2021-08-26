@@ -578,18 +578,19 @@ TEST_CASE("BucketList check bucket sizes", "[bucket][bucketlist][count]")
 
     for (uint32_t ledgerSeq = 1; ledgerSeq <= 256; ++ledgerSeq)
     {
-        if (ledgerSeq >= 2)
+        if (ledgerSeq > 2)
         {
             app->getClock().crank(false);
             auto ledgers = LedgerTestUtils::generateValidLedgerEntries(1);
             ledgers[0].lastModifiedLedgerSeq = ledgerSeq;
             bl.addBatch(*app, ledgerSeq, getAppLedgerVersion(app), {}, ledgers,
                         emptySet);
-        }
-        for (uint32_t level = 0; level < BucketList::kNumLevels; ++level)
-        {
-            checkBucketSizeAndBounds(bl, ledgerSeq, level, true);
-            checkBucketSizeAndBounds(bl, ledgerSeq, level, false);
+
+            for (uint32_t level = 0; level < BucketList::kNumLevels; ++level)
+            {
+                checkBucketSizeAndBounds(bl, ledgerSeq, level, true);
+                checkBucketSizeAndBounds(bl, ledgerSeq, level, false);
+            }
         }
     }
 }
