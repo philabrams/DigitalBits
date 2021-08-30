@@ -17,7 +17,7 @@ Packages available as:
 
 2. Install digitalbits-core package:
 
-        sudo apt-get install digitalbits-core=1.0.46
+        sudo apt-get install digitalbits-core
 
 
 ## RPM-based
@@ -27,26 +27,26 @@ Packages available as:
 
 2. Install digitalbits-core package:
 
-        sudo yum install digitalbits-core-1.0.46-1.x86_64
+        sudo yum install digitalbits-core
 
 ## Raw binaries
 
 - MacOS
 
-        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_1.0.46_darwin-amd64.tar.gz'
+        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_${VERSION}_darwin-amd64.tar.gz'
 
 - Linux
 
-        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_1.0.46_linux-amd64.tar.gz'
+        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
 
 - Windows
 
-        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_1.0.46_windows-amd64.tar.gz'
+        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_${VERSION}_windows-amd64.tar.gz'
 
 
 ## Docker image
 
-    docker pull docker.cloudsmith.io/xdb-foundation/digitalbits-core/digitalbits-core:1.0.46
+    docker pull docker.cloudsmith.io/xdb-foundation/digitalbits-core/digitalbits-core:latest
 
 ==================
 ## From sources
