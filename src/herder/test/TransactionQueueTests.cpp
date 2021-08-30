@@ -702,8 +702,8 @@ TEST_CASE("transaction queue starting sequence boundary",
     auto root = TestAccount::createRoot(*app);
     auto acc1 = root.create("a1", minBalance2);
 
-    closeLedgerOn(*app, 2, 1, 1, 2020);
     closeLedgerOn(*app, 3, 1, 1, 2020);
+    closeLedgerOn(*app, 4, 1, 1, 2020);
 
     SECTION("check a single transaction")
     {

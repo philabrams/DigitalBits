@@ -339,10 +339,12 @@ LedgerManagerImpl::loadLastKnownLedger(
         else
         {
             // In no-history mode, this method should only be called when
-            // the LCL is genesis.
+            // the LCL is genesis or the first fee ledger.
             releaseAssertOrThrow(mLastClosedLedger.hash == lastLedgerHash);
-            releaseAssertOrThrow(mLastClosedLedger.header.ledgerSeq ==
-                                 GENESIS_LEDGER_SEQ);
+            releaseAssertOrThrow((mLastClosedLedger.header.ledgerSeq ==
+                                 GENESIS_LEDGER_SEQ) ||
+                                 (mLastClosedLedger.header.ledgerSeq ==
+                                 GENESIS_LEDGER_SEQ + 1));
             CLOG_INFO(Ledger, "LCL is genesis: {}",
                       ledgerAbbrev(mLastClosedLedger));
         }

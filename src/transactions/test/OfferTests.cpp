@@ -159,7 +159,7 @@ TEST_CASE("create offer", "[tx][offers]")
             auto a1 = root.create("A", minBalance2);
             a1.changeTrust(idr, trustLineLimit);
             issuer.pay(a1, idr, trustLineLimit);
-            closeLedgerOn(*app, 2, 1, 1, 2016);
+            closeLedgerOn(*app, 3, 1, 1, 2016);
             // remove issuer
             issuer.merge(root);
             for_versions_to(12, *app, [&] {
@@ -215,7 +215,7 @@ TEST_CASE("create offer", "[tx][offers]")
             auto a1 = root.create("A", minBalance2);
             a1.changeTrust(idr, trustLineLimit);
             issuer.pay(a1, idr, 100);
-            closeLedgerOn(*app, 2, 1, 1, 2016);
+            closeLedgerOn(*app, 3, 1, 1, 2016);
             // remove issuer
             issuer.merge(root);
 
