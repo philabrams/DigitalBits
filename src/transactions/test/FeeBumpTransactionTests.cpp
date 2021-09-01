@@ -252,15 +252,18 @@ TEST_CASE("fee bump transactions", "[tx][feebump]")
                 feeBump(app->getNetworkID(), acc, root, root, 2 * fee, fee, 1);
             LedgerTxn ltx(app->getLedgerTxnRoot());
             fb->processFeeSeqNum(ltx, fee, app->getFeePoolID());
+            auto feeLedgerSecretKey = getRoot(app->getFeePoolID());
             auto delta = ltx.getDelta();
-            REQUIRE(delta.entry.size() == 1);
+            REQUIRE(delta.entry.size() == 2);
             auto gkey = delta.entry.begin()->first;
             REQUIRE(gkey.type() == InternalLedgerEntryType::LEDGER_ENTRY);
-            REQUIRE(gkey.ledgerKey().account().accountID == acc.getPublicKey());
+            REQUIRE(gkey.ledgerKey().account().accountID ==
+                feeLedgerSecretKey.getPublicKey());
             auto entryDelta = delta.entry.begin()->second;
             auto prev = entryDelta.previous->ledgerEntry().data.account();
             auto curr = entryDelta.current->ledgerEntry().data.account();
-            REQUIRE(prev.balance == curr.balance + 2 * fee);
+            // We check this transaction from the fee ledger perspective
+            REQUIRE(prev.balance == curr.balance - 2 * fee);
         });
     }
 
