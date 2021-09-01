@@ -187,7 +187,7 @@ TEST_CASE("LedgerCloseMetaStream file descriptor - REPLAY_IN_MEMORY",
     XDRInputFileStream stream;
     stream.open(path);
     LedgerCloseMeta lcm;
-    size_t nLcm = 1;
+    size_t nLcm = 2;
     while (stream && stream.readOne(lcm))
     {
         ++nLcm;
