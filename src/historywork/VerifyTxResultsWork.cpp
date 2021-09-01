@@ -104,8 +104,11 @@ VerifyTxResultsWork::verifyTxResultsOfCheckpoint()
             auto txResultEntry = getCurrentTxResultSet(ledgerSeq);
             auto resultSetHash =
                 sha256(xdr::xdr_to_opaque(txResultEntry.txResultSet));
-            auto genesis = ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ &&
-                           txResultEntry.txResultSet.results.empty();
+            // Check for the genesis ledger, as well as the first fee ledger with
+            // ledgerSeq of LedgerManager::GENESIS_LEDGER_SEQ + 1 
+            auto genesis = (ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ ||
+                           ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ + 1)
+                           && txResultEntry.txResultSet.results.empty();
 
             if (!genesis && resultSetHash != curr.header.txSetResultHash)
             {
