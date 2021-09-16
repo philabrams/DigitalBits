@@ -869,13 +869,14 @@ CatchupSimulation::catchupOnline(Application::pointer app, uint32_t initLedger,
 void
 CatchupSimulation::externalizeLedger(HerderImpl& herder, uint32_t ledger)
 {
-    // Remember the vectors count from 2, not 0.
-    if (ledger - 2 >= mLedgerCloseDatas.size())
+    // Remember the vectors count from 0, not 3.
+    const int minExternalizedLedgerNo = 3;
+    if (ledger - minExternalizedLedgerNo >= mLedgerCloseDatas.size())
     {
         return;
     }
 
-    auto const& lcd = mLedgerCloseDatas.at(ledger - 2);
+    auto const& lcd = mLedgerCloseDatas.at(ledger - minExternalizedLedgerNo);
 
     CLOG_INFO(History,
               "force-externalizing LedgerCloseData for {} has txhash:{}",
