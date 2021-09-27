@@ -313,7 +313,7 @@ tooManySponsoring(Application& app, TestAccount& successfulOpAcc,
                 auto acc = digitalbits::loadAccount(ltx, root.getPublicKey());
                 auto& le = acc.current();
                 auto& ae = le.data.account();
-                // the total amoint of coins was changed in commit 5b871e7
+                // the total amount of coins was changed in commit 5b871e7
                 long balance_diff = 
                     app.getLedgerManager().genesisLedger().totalCoins - ae.balance;
                 long totalCoinsOld = 1.0E+18;
