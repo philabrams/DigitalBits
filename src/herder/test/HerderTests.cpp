@@ -363,18 +363,26 @@ testTxSet(uint32 protocolVersion)
             SECTION("gap middle")
             {
                 int remIdx = 2; // 3rd transaction
+                digitalbits::SequenceNumber tx_to_erase = 
+                    txSet->mTransactions[nbTransactions + remIdx]->getSeqNum();
                 txSet->sortForApply();
-                txSet->mTransactions.erase(txSet->mTransactions.begin() +
-                                           (remIdx * 2));
+                // remove the selected transaction belonging to the 2nd account
+                txSet->mTransactions.erase(std::remove_if(
+                        txSet->mTransactions.begin(),
+                        txSet->mTransactions.end(),
+                        [&](auto& tx) {return (tx->getSeqNum() == tx_to_erase
+                            && tx->getSourceID() == accounts[1].getPublicKey());}),
+                    txSet->mTransactions.end());                
                 txSet->sortForHash();
                 REQUIRE(!txSet->checkValid(*app, 0, 0));
 
                 auto removed = txSet->trimInvalid(*app, 0, 0);
                 REQUIRE(txSet->checkValid(*app, 0, 0));
-                // one account has all its transactions,
-                // other, we removed all its tx
-                REQUIRE(removed.size() == (nbTransactions - 1));
-                REQUIRE(txSet->mTransactions.size() == nbTransactions);
+                // one account has all its transactions
+                const int exp_removed_size = 2,
+                          exp_retained_size = nbTransactions + 2;
+                REQUIRE(removed.size() == exp_removed_size);
+                REQUIRE(txSet->mTransactions.size() == exp_retained_size);
             }
         }
         SECTION("insufficient balance")

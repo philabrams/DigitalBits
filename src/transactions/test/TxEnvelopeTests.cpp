@@ -634,7 +634,8 @@ TEST_CASE("txenvelope", "[tx][envelope]")
 
                             // merge b1 into a1 and attempt the payment tx
                             auto r = closeLedgerOn(*app, 4, 1, 2, 2016,
-                                                   {txMerge, tx});
+                                                   {txMerge, tx},
+                                                    /* strictOrder */ true);
 
                             if (txAccountMissing)
                             {
