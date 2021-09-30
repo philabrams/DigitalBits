@@ -35,6 +35,7 @@ struct Hello
     uint32 overlayVersion;
     uint32 overlayMinVersion;
     Hash networkID;
+    Hash feePoolID;
     string versionStr<100>;
     int listeningPort;
     NodeID peerID;

@@ -80,6 +80,7 @@ Peer::sendHello()
     elo.overlayVersion = mApp.getConfig().OVERLAY_PROTOCOL_VERSION;
     elo.versionStr = mApp.getConfig().VERSION_STR;
     elo.networkID = mApp.getNetworkID();
+    elo.feePoolID = mApp.getFeePoolID();
     elo.listeningPort = mApp.getConfig().PEER_PORT;
     elo.peerID = mApp.getConfig().NODE_SEED.getPublicKey();
     elo.cert = this->getAuthCert();
@@ -1150,6 +1151,15 @@ Peer::recvHello(Hello const& elo)
         CLOG_DEBUG(Overlay, "NetworkID = {} expected: {}",
                    hexAbbrev(elo.networkID), hexAbbrev(mApp.getNetworkID()));
         sendErrorAndDrop(ERR_CONF, "wrong network passphrase", dropMode);
+        return;
+    }
+
+    if (elo.feePoolID != mApp.getFeePoolID())
+    {
+        CLOG_WARNING(Overlay, "Connection from peer with different FeePoolID");
+        CLOG_DEBUG(Overlay, "FeePoolID = {} expected: {}",
+                   hexAbbrev(elo.feePoolID), hexAbbrev(mApp.getFeePoolID()));
+        sendErrorAndDrop(ERR_CONF, "wrong fee pool passphrase", dropMode);
         return;
     }
 
