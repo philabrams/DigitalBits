@@ -238,6 +238,16 @@ LedgerManagerImpl::startNewLedger(LedgerHeader const& genesisLedger)
     CLOG_INFO(Ledger, "Established genesis ledger, closing");
     CLOG_INFO(Ledger, "Root account seed: {}", skey.getStrKeySeed().value);
 
+    CLOG_INFO(Ledger, "Test Secret Keys");
+    auto network_pass_test = "TestNet Global DigitalBits Network ; December 2020";
+    auto ntwork_pass_live = "LiveNet Global DigitalBits Network ; February 2021";
+    auto skey_test = SecretKey::fromSeed(sha256(network_pass_test));
+    auto skey_live = SecretKey::fromSeed(sha256(ntwork_pass_live));
+    CLOG_INFO(Ledger, "Root account seed (test net): {}", skey_test.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Root account seed (live net): {}", skey_live.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Root account seed (live net, public): {}", skey_live.getStrKeyPublic());
+
+
     ledgerClosed(ltx);
     ltx.commit();
 }
@@ -280,6 +290,16 @@ LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
     fpAccount.balance = 100;
 
     ltx.create(feePoolEntry);
+
+    auto network_pass_test = "Testnet DigitalBits Fee Pool ; February 2021";
+    auto ntwork_pass_live = "LiveNet DigitalBits Fee Pool ; February 2021";
+    auto skey_test = SecretKey::fromSeed(sha256(network_pass_test));
+    auto skey_live = SecretKey::fromSeed(sha256(ntwork_pass_live));
+    CLOG_INFO(Ledger, "Fee account seed (application): {}", fskey.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Fee account seed (test net): {}", skey_test.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Fee account seed (test net, public): {}", skey_test.getStrKeyPublic());
+    CLOG_INFO(Ledger, "Fee account seed (live net): {}", skey_live.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Fee account seed (live net, public): {}", skey_live.getStrKeyPublic());
 
     ledgerClosed(ltx);
     ltx.commit();
