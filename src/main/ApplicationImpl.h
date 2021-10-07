@@ -118,7 +118,7 @@ class ApplicationImpl : public Application
 
     virtual Hash const& getNetworkID() const override;
 
-    virtual Hash const& getFeePoolID() const override;
+    virtual PublicKey const& getFeePoolPublicKey() const override;
 
     virtual AbstractLedgerTxnParent& getLedgerTxnRoot() override;
 
@@ -195,7 +195,7 @@ class ApplicationImpl : public Application
     VirtualClock::system_time_point mStartedOn;
 
     Hash mNetworkID;
-    Hash mFeeID;
+    PublicKey mFeePoolPublicKey;
 
     void newDB();
     void upgradeDB();
