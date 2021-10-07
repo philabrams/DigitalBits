@@ -162,6 +162,7 @@ getTestConfig(int instanceNumber, Config::TestDbMode mode)
         thisConfig.UNSAFE_QUORUM = true;
 
         thisConfig.NETWORK_PASSPHRASE = "(V) (;,,;) (V)";
+        thisConfig.FEE_PASSPHRASE = "Testnet DigitalBits Fee Pool ; February 2021";
 
         std::ostringstream dbname;
         switch (mode)

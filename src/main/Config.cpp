@@ -990,6 +990,7 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             else if (item.first == "FEE_PASSPHRASE")
             {
                 FEE_PASSPHRASE = readString(item);
+                CLOG_INFO(Ledger, "FEE_PASSPHRASE = {}", FEE_PASSPHRASE);
             }
             else if (item.first == "INVARIANT_CHECKS")
             {

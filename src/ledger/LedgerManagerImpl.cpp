@@ -296,6 +296,7 @@ LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
     auto skey_test = SecretKey::fromSeed(sha256(network_pass_test));
     auto skey_live = SecretKey::fromSeed(sha256(ntwork_pass_live));
     CLOG_INFO(Ledger, "Fee account seed (application): {}", fskey.getStrKeySeed().value);
+    CLOG_INFO(Ledger, "Fee account seed (application, public): {}", fskey.getStrKeyPublic());
     CLOG_INFO(Ledger, "Fee account seed (test net): {}", skey_test.getStrKeySeed().value);
     CLOG_INFO(Ledger, "Fee account seed (test net, public): {}", skey_test.getStrKeyPublic());
     CLOG_INFO(Ledger, "Fee account seed (live net): {}", skey_live.getStrKeySeed().value);

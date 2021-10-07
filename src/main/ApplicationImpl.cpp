@@ -95,6 +95,8 @@ ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
     mNetworkID = sha256(mConfig.NETWORK_PASSPHRASE);
     mFeeID = sha256(mConfig.FEE_PASSPHRASE);
 
+    CLOG_INFO(Ledger, "FEE_PASSPHRASE = {}", mConfig.FEE_PASSPHRASE);
+
     TracyAppInfo(DIGITALBITS_CORE_VERSION.c_str(), DIGITALBITS_CORE_VERSION.size());
     TracyAppInfo(mConfig.NETWORK_PASSPHRASE.c_str(),
                  mConfig.NETWORK_PASSPHRASE.size());
