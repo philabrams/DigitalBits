@@ -3,6 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 %#include "xdr/DigitalBits-ledger.h"
+%#include "xdr/DigitalBits-ledger-entries.h"
 
 namespace digitalbits
 {
@@ -35,6 +36,7 @@ struct Hello
     uint32 overlayVersion;
     uint32 overlayMinVersion;
     Hash networkID;
+    PublicKey feePoolPublicKey;
     string versionStr<100>;
     int listeningPort;
     NodeID peerID;
