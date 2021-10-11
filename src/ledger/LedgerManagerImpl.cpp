@@ -291,16 +291,22 @@ LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
 
     ltx.create(feePoolEntry);
 
-    auto network_pass_test = "Testnet DigitalBits Fee Pool ; February 2021";
-    auto ntwork_pass_live = "LiveNet DigitalBits Fee Pool ; February 2021";
-    auto skey_test = SecretKey::fromSeed(sha256(network_pass_test));
-    auto skey_live = SecretKey::fromSeed(sha256(ntwork_pass_live));
-    CLOG_INFO(Ledger, "Fee account seed (application): {}", fskey.getStrKeySeed().value);
-    CLOG_INFO(Ledger, "Fee account seed (application, public): {}", fskey.getStrKeyPublic());
-    CLOG_INFO(Ledger, "Fee account seed (test net): {}", skey_test.getStrKeySeed().value);
-    CLOG_INFO(Ledger, "Fee account seed (test net, public): {}", skey_test.getStrKeyPublic());
-    CLOG_INFO(Ledger, "Fee account seed (live net): {}", skey_live.getStrKeySeed().value);
-    CLOG_INFO(Ledger, "Fee account seed (live net, public): {}", skey_live.getStrKeyPublic());
+    std::vector<std::string> passes {
+        "Testnet DigitalBits Fee Pool ; February 2021",
+        "LiveNet DigitalBits Fee Pool ; February 2021",
+        "Public Global Stellar Network ; September 2015",
+        "Test SDF Network ; September 2015",
+        "Random Fee Pool ; July 2017",
+        "(V) (;,,;) (V)",
+        "Test network ; (V) (;,,;) (V) October 1994"
+    };
+
+    for (const auto& pass : passes)
+    {
+        auto skey_test = SecretKey::fromSeed(sha256(pass));
+        CLOG_INFO(Ledger, "Fee passphrase {},\n seed {}, public key {}", pass,
+            skey_test.getStrKeySeed().value, skey_test.getStrKeyPublic());
+    }
 
     ledgerClosed(ltx);
     ltx.commit();
