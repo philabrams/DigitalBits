@@ -116,7 +116,7 @@ jobs:
       - name: Build the app    
         run: |
            export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-
+           export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            ./autogen.sh
            ./configure  
            make -j2
