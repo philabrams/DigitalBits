@@ -987,9 +987,9 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             {
                 NETWORK_PASSPHRASE = readString(item);
             }
-            else if (item.first == "FEE_POOL_PUBLIC_KEY")
+            else if (item.first == "FEE_PASSPHRASE")
             {
-                FEE_POOL_PUBLIC_KEY = readString(item);
+                FEE_PASSPHRASE = readString(item);
             }
             else if (item.first == "INVARIANT_CHECKS")
             {

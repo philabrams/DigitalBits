@@ -93,9 +93,7 @@ TxSimTransactionFrame::getFee(LedgerHeader const& header, int64_t baseFee,
 }
 
 void
-TxSimTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
-                                        int64_t baseFee,
-                                        PublicKey const& feePoolPublicKey)
+TxSimTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID)
 {
     mCachedAccount.reset();
 
@@ -104,7 +102,8 @@ TxSimTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
 
     auto sourceAccount = loadSourceAccount(ltx, header);
 
-    auto feeTarget = digitalbits::loadAccount(ltx, feePoolPublicKey);
+    SecretKey fskey = SecretKey::fromSeed(feeID);
+    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
 
     if (!sourceAccount)
     {

@@ -147,7 +147,7 @@ applyCheck(TransactionFramePtr tx, Application& app, bool checkSeqNum)
             auto baseFee = ltxCleanTx.loadHeader().current().baseFee;
             if (code != txNO_ACCOUNT)
             {
-                checkedTx->processFeeSeqNum(ltxCleanTx, baseFee, app.getFeePoolPublicKey());
+                checkedTx->processFeeSeqNum(ltxCleanTx, baseFee, app.getFeePoolID());
             }
             // else, leave feeCharged as per checkValid
             try
@@ -169,12 +169,13 @@ applyCheck(TransactionFramePtr tx, Application& app, bool checkSeqNum)
                                    .data.account();
 
             // load the root account of the first fee ledger
+            auto secretKey = getRoot(app.getFeePoolID());
             auto srcAccountBeforeFeeLedger = loadAccount(ltxFeeProc, 
-                app.getFeePoolPublicKey(), true).current().data.account();
+                secretKey.getPublicKey(), true).current().data.account();
 
             // no account -> can't process the fee
             auto baseFee = ltxFeeProc.loadHeader().current().baseFee;
-            tx->processFeeSeqNum(ltxFeeProc, baseFee, app.getFeePoolPublicKey());
+            tx->processFeeSeqNum(ltxFeeProc, baseFee, app.getFeePoolID());
             // check that the recommended fee is correct, ignore the difference
             // for later
             if (ledgerVersion >= 11)
@@ -200,7 +201,7 @@ applyCheck(TransactionFramePtr tx, Application& app, bool checkSeqNum)
             // currAcc is the fee ledger root, 
             // while tx->SourceId is the genesis ledger root
             //REQUIRE(currAcc.accountID == tx->getSourceID());
-            REQUIRE(currAcc.accountID == app.getFeePoolPublicKey());
+            REQUIRE(currAcc.accountID == secretKey.getPublicKey());
             // it should increase because we compare the balance of the 
             // fee ledger account
             // REQUIRE(currAcc.balance < prevAcc.balance);

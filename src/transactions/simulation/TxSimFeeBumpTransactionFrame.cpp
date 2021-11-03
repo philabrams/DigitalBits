@@ -34,14 +34,14 @@ TxSimFeeBumpTransactionFrame::getFee(const digitalbits::LedgerHeader& header,
 
 void
 TxSimFeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
-                                               int64_t baseFee,
-                                               PublicKey const& feePoolPublicKey)
+                                               int64_t baseFee, Hash const& feeID)
 {
     resetResults(ltx.loadHeader().current(), baseFee, true);
 
     auto feeSource = digitalbits::loadAccount(ltx, getFeeSourceID());
 
-    auto feeTarget = digitalbits::loadAccount(ltx, feePoolPublicKey);
+    SecretKey fskey = SecretKey::fromSeed(feeID);
+    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
 
     if (!feeSource)
     {
