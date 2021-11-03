@@ -42,7 +42,7 @@ jobs:
       - name: Build the app    
         run: |
            export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-
+           export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            ./autogen.sh
            ./configure  
            make -j2
@@ -92,3 +92,13 @@ jobs:
       - name: Build Solution
         run: |
             msbuild.exe Builds\VisualStudio\digitalbits-core.sln /p:platform="x64" /p:configuration="Release" /p:AdditionalLibPaths="C:\Program Files\PostgreSQL\9.5\include"
+  
+  dockerbuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: '0'
+
+      - name: Build Docker Image
+        run: docker build -t digitalbits-core .

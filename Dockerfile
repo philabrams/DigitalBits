@@ -1,31 +1,24 @@
-FROM ubuntu:16.04
+FROM ubuntu:20.04 as build
 
 WORKDIR /opt/digitalbits-core
 
 COPY . .
-
-ENV CC=clang-8
-ENV CXX=clang++-8
-ENV CFLAGS="-O3 -g1 -fno-omit-frame-pointer"
-ENV CXXFLAGS="$CFLAGS -stdlib=libc++" 
-
-RUN apt-get update
-RUN apt-get install -y software-properties-common
-RUN add-apt-repository -y ppa:ubuntu-toolchain-r/test
-RUN apt-get update
-
-RUN apt-get install -y git \
-                    build-essential pkg-config \
-                    autoconf automake libtool \
-                    bison flex libpq-dev \
-                    libunwind-dev parallel \
-                    clang-8 \
-                    gcc-6 g++-6 cpp-6 \
-                    libc++-8-dev libc++abi-8-dev
+RUN apt-get update && \
+    apt-get install -y software-properties-common && \
+    add-apt-repository -y ppa:ubuntu-toolchain-r/test && \
+    apt-get update && \
+    apt-get install git build-essential alien pkg-config \
+          autoconf automake libtool bison flex libpq-dev libunwind-dev \
+          parallel gcc-8 g++-8 cpp-8 unzip curl -y
 
 RUN ./autogen.sh
 RUN ./configure
 
 # make -jN where N is amount of your cpu cores - 1
-RUN make 
+RUN make -j`nproc`
 RUN make install
+
+FROM ubuntu:20.04
+RUN apt-get update && apt-get install libunwind8 curl libpq-dev -y && rm -rf /var/lib/apt/lists/* 
+COPY --from=build /usr/local/bin/digitalbits-core /usr/local/bin/
+ENTRYPOINT [ "/usr/local/bin/digitalbits-core" ]
