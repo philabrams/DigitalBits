@@ -27,8 +27,7 @@ class TxSimFeeBumpTransactionFrame : public FeeBumpTransactionFrame
 
     int64_t getFee(LedgerHeader const& header, int64_t baseFee,
                    bool applying) const override;
-    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee,
-                          PublicKey const& feePoolPublicKey) override;
+    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID) override;
 };
 }
 }

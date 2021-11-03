@@ -162,7 +162,6 @@ getTestConfig(int instanceNumber, Config::TestDbMode mode)
         thisConfig.UNSAFE_QUORUM = true;
 
         thisConfig.NETWORK_PASSPHRASE = "(V) (;,,;) (V)";
-        thisConfig.FEE_POOL_PUBLIC_KEY = "GAEWWN53SHW7EICBTNKQH67ITUWQPSTBNTT44ZKHLQJFME6JETA664AC";
 
         std::ostringstream dbname;
         switch (mode)

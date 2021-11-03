@@ -7,7 +7,6 @@
 #include "ledger/LedgerHashUtils.h"
 #include "overlay/DigitalBitsXDR.h"
 #include "util/UnorderedSet.h"
-#include "xdr/DigitalBits-types.h"
 
 namespace digitalbits
 {
@@ -56,8 +55,7 @@ class TransactionFrameBase
     insertKeysForFeeProcessing(UnorderedSet<LedgerKey>& keys) const = 0;
     virtual void insertKeysForTxApply(UnorderedSet<LedgerKey>& keys) const = 0;
 
-    virtual void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee,
-                                  PublicKey const& feePoolPublicKey) = 0;
+    virtual void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID) = 0;
 
     virtual DigitalBitsMessage toDigitalBitsMessage() const = 0;
 };

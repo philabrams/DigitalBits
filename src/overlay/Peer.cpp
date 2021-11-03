@@ -7,7 +7,6 @@
 #include "BanManager.h"
 #include "crypto/CryptoError.h"
 #include "crypto/Hex.h"
-#include "crypto/KeyUtils.h"
 #include "crypto/Random.h"
 #include "crypto/SHA.h"
 #include "database/Database.h"
@@ -31,7 +30,6 @@
 #include "medida/timer.h"
 #include "xdrpp/marshal.h"
 #include <fmt/format.h>
-#include <xdrpp/types.h>
 
 #include <Tracy.hpp>
 #include <soci.h>
@@ -82,7 +80,6 @@ Peer::sendHello()
     elo.overlayVersion = mApp.getConfig().OVERLAY_PROTOCOL_VERSION;
     elo.versionStr = mApp.getConfig().VERSION_STR;
     elo.networkID = mApp.getNetworkID();
-    elo.feePoolPublicKey = mApp.getFeePoolPublicKey();
     elo.listeningPort = mApp.getConfig().PEER_PORT;
     elo.peerID = mApp.getConfig().NODE_SEED.getPublicKey();
     elo.cert = this->getAuthCert();
@@ -1153,16 +1150,6 @@ Peer::recvHello(Hello const& elo)
         CLOG_DEBUG(Overlay, "NetworkID = {} expected: {}",
                    hexAbbrev(elo.networkID), hexAbbrev(mApp.getNetworkID()));
         sendErrorAndDrop(ERR_CONF, "wrong network passphrase", dropMode);
-        return;
-    }
-
-    if (!(elo.feePoolPublicKey == mApp.getFeePoolPublicKey()))
-    {
-        CLOG_WARNING(Overlay, "Connection from peer with different FeePoolPublicKey");
-        CLOG_DEBUG(Overlay, "FeePoolPublicKey = {} expected: {}",
-                   KeyUtils::toStrKey<PublicKey>(elo.feePoolPublicKey),
-                   KeyUtils::toStrKey<PublicKey>(mApp.getFeePoolPublicKey()));
-        sendErrorAndDrop(ERR_CONF, "wrong fee pool public key", dropMode);
         return;
     }
 
