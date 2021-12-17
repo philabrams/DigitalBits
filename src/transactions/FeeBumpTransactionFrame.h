@@ -87,7 +87,8 @@ class FeeBumpTransactionFrame : public TransactionFrameBase
     insertKeysForFeeProcessing(UnorderedSet<LedgerKey>& keys) const override;
     void insertKeysForTxApply(UnorderedSet<LedgerKey>& keys) const override;
 
-    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID) override;
+    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee,
+                          PublicKey const& feePoolPublicKey) override;
 
     DigitalBitsMessage toDigitalBitsMessage() const override;
 

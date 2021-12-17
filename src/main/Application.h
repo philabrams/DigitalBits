@@ -283,7 +283,8 @@ class Application
     // instances
     virtual Hash const& getNetworkID() const = 0;
     
-    virtual Hash const& getFeePoolID() const = 0;
+    // Get the public key identyfying a fee pool
+    virtual PublicKey const& getFeePoolPublicKey() const = 0;
 
     virtual AbstractLedgerTxnParent& getLedgerTxnRoot() = 0;
 
