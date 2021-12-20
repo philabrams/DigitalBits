@@ -73,7 +73,7 @@ jobs:
       
       - name: Make .rpm package
         run: | 
-          sudo alien -r -k digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_amd64.deb
+          sudo alien -r -k digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
           sudo cp digitalbits-core-linux-amd64.tar.gz digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
           
       - name: Upload to cloudsmith.io
