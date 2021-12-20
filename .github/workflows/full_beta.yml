@@ -74,15 +74,15 @@ jobs:
       - name: Make .rpm package
         run: | 
           sudo alien -r -k digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          sudo cp digitalbits-core-linux-amd64.tar.gz digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+          sudo cp digitalbits-core-linux-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
           
       - name: Upload to cloudsmith.io
         run: |
           export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
           export PATH=$PATH:$HOME/.local/bin
-          cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}-1.x86_64.rpm
-          cloudsmith push raw xdb-foundation/digitalbits-core digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+          cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version digitalbits-core_${{ steps.previoustag.outputs.tag }}-1.x86_64.rpm
+          cloudsmith push raw xdb-foundation/digitalbits-core digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
       - uses: ncipollo/release-action@v1
         with:
@@ -128,8 +128,8 @@ jobs:
       - name: Push MasOS build to cloudsmith
         run: |
             export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-            sudo cp digitalbits-core-darwin-amd64.tar.gz digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
-            sudo CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }} cloudsmith push raw xdb-foundation/digitalbits-core digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
+            sudo cp digitalbits-core-darwin-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
+            sudo CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }} cloudsmith push raw xdb-foundation/digitalbits-core digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
       
       - uses: ncipollo/release-action@v1
         with:
@@ -220,11 +220,11 @@ jobs:
             pip uninstall click -y
             pip install click==7.1.2
       - name: Make archive
-        run: tar -zcvf digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz digitalbits-core.exe
+        run: tar -zcvf digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz digitalbits-core.exe
       - uses: ncipollo/release-action@v1
         with:
             allowUpdates: true
-            artifacts: "digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz"
+            artifacts: "digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz"
             tag: ${{ steps.previoustag.outputs.tag }}
             omitBodyDuringUpdate: true
             token: ${{ secrets.GITHUB_TOKEN }}   
@@ -232,7 +232,7 @@ jobs:
         run:  |
           export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
           export PATH=$PATH:$HOME/.local/bin
-          cloudsmith push raw xdb-foundation/digitalbits-core digitalbits-core-beta_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz
+          cloudsmith push raw xdb-foundation/digitalbits-core digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz
       
   dockerbuild:
     runs-on: ubuntu-latest
