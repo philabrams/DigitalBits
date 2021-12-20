@@ -3,7 +3,7 @@ name: Release For All Platforms
 on:
   push:
     branches: 
-      - rever_pr
+      - revert-pr
   workflow_dispatch:
 jobs:
   tagbump:
