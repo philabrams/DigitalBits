@@ -88,7 +88,7 @@ jobs:
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: "$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz"
+          artifacts: "beta-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz"
           omitBodyDuringUpdate: true
           tag: ${{ steps.previoustag.outputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}   
