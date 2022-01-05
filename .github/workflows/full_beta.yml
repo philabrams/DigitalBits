@@ -82,7 +82,7 @@ jobs:
           export PATH=$PATH:$HOME/.local/bin
           
           cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core-${{ steps.previoustag.outputs.tag }}-1.x86_64.rpm
+          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
           cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
       - uses: ncipollo/release-action@v1
@@ -129,13 +129,13 @@ jobs:
       - name: Push MasOS build to cloudsmith
         run: |
             export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-            sudo cp digitalbits-core-darwin-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
-            sudo CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }} cloudsmith push raw xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;]) digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
+            sudo cp digitalbits-core-darwin-amd64.tar.gz $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta/"; fi;])digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
+            sudo CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }} cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta/"; fi;])digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
       
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
-          artifacts: "digitalbits-core-darwin-amd64.tar.gz"
+          artifacts: "beta-digitalbits-core-darwin-amd64.tar.gz"
           omitBodyDuringUpdate: true
           tag: ${{ steps.previoustag.outputs.tag }}
           token: ${{ secrets.GITHUB_TOKEN }}   
@@ -221,11 +221,11 @@ jobs:
             pip uninstall click -y
             pip install click==7.1.2
       - name: Make archive
-        run: tar -zcvf digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz digitalbits-core.exe
+        run: tar -zcvf $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta/"; fi;])digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz digitalbits-core.exe
       - uses: ncipollo/release-action@v1
         with:
             allowUpdates: true
-            artifacts: "digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz"
+            artifacts: "beta-digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz"
             tag: ${{ steps.previoustag.outputs.tag }}
             omitBodyDuringUpdate: true
             token: ${{ secrets.GITHUB_TOKEN }}   
@@ -233,7 +233,7 @@ jobs:
         run:  |
           export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
           export PATH=$PATH:$HOME/.local/bin
-          cloudsmith push raw xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;]) digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz
+          cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta/"; fi;])digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz
       
   dockerbuild:
     runs-on: ubuntu-latest
