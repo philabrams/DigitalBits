@@ -68,7 +68,8 @@ jobs:
         run: docker login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} docker.cloudsmith.io
 
       - name: Build Docker Image
-        run: docker build -f Dockerfile.prebuild -t digitalbits-core .
+        run:  
+         docker build -f Dockerfile.prebuild -t digitalbits-core .
 
       - name: Tag Docker Images
         run: |
