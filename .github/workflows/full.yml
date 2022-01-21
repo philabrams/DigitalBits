@@ -251,30 +251,4 @@ jobs:
           export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
           export PATH=$PATH:$HOME/.local/bin
           cloudsmith push raw xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;]) digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz
-      
-  # dockerbuild:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #       with:
-  #         fetch-depth: '0'
-
-  #     - name: Get Latest Tag
-  #       id: previoustag
-  #       uses: WyriHaximus/github-action-get-previous-tag@v1
-
-  #     - name: Login into cloudsmith
-  #       run: docker login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} docker.cloudsmith.io
-
-  #     - name: Build Docker Image
-  #       run: docker build -t digitalbits-core .
-
-  #     - name: Tag Docker Images
-  #       run: |
-  #         docker tag digitalbits-core docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-  #         docker tag digitalbits-core docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
-
-  #     - name: Push Docker Images
-  #       run: |
-  #         docker push docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-  #         docker push docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest 
+    
