@@ -3,7 +3,7 @@ name: Beta Release For All Platforms
 on:
   push:
     branches: 
-      - 'beta/**'
+      - 'beta'
   workflow_dispatch:
 jobs:
   tagbump:
