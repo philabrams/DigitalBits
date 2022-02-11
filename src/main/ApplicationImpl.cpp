@@ -43,6 +43,7 @@
 #include "process/ProcessManager.h"
 #include "scp/LocalNode.h"
 #include "scp/QuorumSetUtils.h"
+#include "secrets/SecretsManager.h"
 #include "util/GlobalChecks.h"
 #include "util/LogSlowExecution.h"
 #include "util/Logging.h"
@@ -64,7 +65,7 @@ static const int SHUTDOWN_DELAY_SECONDS = 1;
 
 namespace digitalbits
 {
-
+// configuration of the application will be set up here
 ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
     : mVirtualClock(clock)
     , mConfig(cfg)
@@ -151,6 +152,9 @@ ApplicationImpl::initialize(bool createNewDB)
     mWorkScheduler = WorkScheduler::create(*this);
     mBanManager = BanManager::create(*this);
     mStatusManager = std::make_unique<StatusManager>();
+    mSecretsManager = SecretsManager::create(*this);
+
+    CLOG_INFO(Ledger, "Getting our top secret info {}", mSecretsManager->getSecret(""));
 
     if (getConfig().MODE_USES_IN_MEMORY_LEDGER)
     {

@@ -35,6 +35,7 @@ class LedgerTxn;
 class LedgerTxnRoot;
 class InMemoryLedgerTxnRoot;
 class LoadGenerator;
+class SecretsManager;
 
 class ApplicationImpl : public Application
 {
@@ -161,6 +162,7 @@ class ApplicationImpl : public Application
     std::unique_ptr<BanManager> mBanManager;
     std::unique_ptr<StatusManager> mStatusManager;
     std::unique_ptr<AbstractLedgerTxnParent> mLedgerTxnRoot;
+    std::unique_ptr<SecretsManager> mSecretsManager;
 
     // This exists for use in MODE_USES_IN_MEMORY_LEDGER only: the
     // mLedgerTxnRoot will be an InMemoryLedgerTxnRoot which is a _stub_
