@@ -12,6 +12,11 @@ SecretsManager::create(Application& app)
 SecretsManager::~SecretsManager() = default;
 SecretsManagerImpl::~SecretsManagerImpl() = default;
 
+SecretsManagerImpl::SecretsManagerImpl(Application& app) : mApp(app)
+{
+
+}
+
 std::string SecretsManagerImpl::getSecret(const std::string&) const
 {
     return "TopSecretInfo";
