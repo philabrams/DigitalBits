@@ -14,10 +14,35 @@ else # !BUILD_TESTS
 digitalbits_core_SOURCES = main/DigitalBitsCoreVersion.cpp $(SRC_CXX_FILES)
 endif # !BUILD_TESTS
 
+# AWS SDK libraries
+lib_aws_sdk = -laws-cpp-sdk-secretsmanager \
+	-laws-cpp-sdk-core \
+	-lcurl \
+	-lssl \
+	-lcrypto \
+	-lz \
+	-laws-crt-cpp \
+	-laws-c-mqtt \
+	-laws-c-event-stream \
+	-laws-checksums \
+	-laws-c-s3 \
+	-laws-c-auth \
+	-laws-c-http \
+	-laws-c-io \
+	-ls2n \
+	-laws-c-compression \
+	-laws-c-cal \
+	-laws-c-common \
+	-lm \
+	-lrt \
+	-lcrypto \
+	-ldl
+	-lpthread 
+
 digitalbits_core_LDADD = $(soci_LIBS) $(libmedida_LIBS)		\
 	$(top_builddir)/lib/lib3rdparty.a $(sqlite3_LIBS)	\
 	$(libpq_LIBS) $(xdrpp_LIBS) $(libsodium_LIBS) $(libunwind_LIBS) \
-	-laws-cpp-sdk-secretsmanager
+    $(lib_aws_sdk)
 
 TESTDATA_DIR = testdata
 TEST_FILES = $(TESTDATA_DIR)/digitalbits-core_example.cfg $(TESTDATA_DIR)/digitalbits-core_standalone.cfg \
