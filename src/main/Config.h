@@ -381,6 +381,11 @@ class Config : public std::enable_shared_from_this<Config>
     // the entry cache
     size_t PREFETCH_BATCH_SIZE;
 
+    // ARN for the secrets to be fetched on runtime
+    std::string DATABASE_ARN;
+    std::string NODE_SEED_ARN;
+
+
 #ifdef BUILD_TESTS
     // If set to true, the application will be aware this run is for a test
     // case.  This is used right now in the signal handler to exit() instead of
@@ -396,6 +401,9 @@ class Config : public std::enable_shared_from_this<Config>
 
     void load(std::string const& filename);
     void load(std::istream& in);
+    // Update application configuration with secrets stored in AWS.
+    // Should be called before an ApplicationImpl instance is created.
+    void loadAwsSecrets();
 
     // fixes values of connection-relates settings
     void adjust();

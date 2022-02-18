@@ -152,9 +152,6 @@ ApplicationImpl::initialize(bool createNewDB)
     mWorkScheduler = WorkScheduler::create(*this);
     mBanManager = BanManager::create(*this);
     mStatusManager = std::make_unique<StatusManager>();
-    mSecretsManager = SecretsManager::create(*this);
-
-    CLOG_INFO(Ledger, "Getting our top secret info {}", mSecretsManager->getSecret(""));
 
     if (getConfig().MODE_USES_IN_MEMORY_LEDGER)
     {

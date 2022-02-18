@@ -11,17 +11,19 @@
 #include "ledger/LedgerManager.h"
 #include "main/ExternalQueue.h"
 #include "main/DigitalBitsCoreVersion.h"
+#include "secrets/SecretsManager.h"
 #include "scp/LocalNode.h"
 #include "scp/QuorumSetUtils.h"
 #include "util/Fs.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "util/types.h"
-
 #include "util/UnorderedSet.h"
+
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 #include <functional>
+#include <json/json.h>
 #include <sstream>
 #include <unordered_set>
 
@@ -179,6 +181,9 @@ Config::Config() : NODE_SEED(SecretKey::random())
     ENTRY_CACHE_SIZE = 100000;
     BEST_OFFERS_CACHE_SIZE = 64;
     PREFETCH_BATCH_SIZE = 1000;
+
+    DATABASE_ARN = "";
+    NODE_SEED_ARN = "";
 
 #ifdef BUILD_TESTS
     TEST_CASES_ENABLED = false;
@@ -841,6 +846,7 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             }
             else if (item.first == "NODE_SEED")
             {
+                CLOG_INFO(DEFAULT_LOG, "The NODE_SEED field is deprecated, it's value will be ignored.");
                 PublicKey nodeID;
                 parseNodeID(readString(item), nodeID, NODE_SEED, true);
             }
@@ -981,6 +987,7 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             }
             else if (item.first == "DATABASE")
             {
+                CLOG_INFO(DEFAULT_LOG, "The DATABASE field is deprecated, it's value will be ignored.");
                 DATABASE = SecretValue{readString(item)};
             }
             else if (item.first == "NETWORK_PASSPHRASE")
@@ -1029,6 +1036,14 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             {
                 EXCLUDE_TRANSACTIONS_CONTAINING_OPERATION_TYPE =
                     readXdrEnumArray<OperationType>(item);
+            }
+            else if (item.first == "DATABASE_ARN")
+            {
+                DATABASE_ARN = readString(item);
+            }
+            else if (item.first == "NODE_SEED_ARN")
+            {
+                NODE_SEED_ARN = readString(item);
             }
             else
             {
@@ -1617,6 +1632,71 @@ Config::toString(SCPQuorumSet const& qset)
         qset, [&](PublicKey const& k) { return toShortString(k); });
     Json::StyledWriter fw;
     return fw.write(json);
+}
+
+void Config::loadAwsSecrets()
+{
+    auto secretsManager = SecretsManager::create();
+    // Fetch DB configurations
+    if (DATABASE_ARN.size())
+    {
+        auto dbInfoStr = secretsManager->getSecretById(DATABASE_ARN);
+
+        Json::Value dbInfoJson;
+        Json::Reader jsonReader;
+
+        if (jsonReader.parse(dbInfoStr, dbInfoJson))
+        {
+            auto engine = dbInfoJson["engine"].asString();
+            std::string database;
+            if (engine == "postgres")
+            {
+                database = fmt::format("postgresql://dbname={} user={} password={} host={} port={}",
+                    dbInfoJson["dbname"].asString(), dbInfoJson["username"].asString(),
+                    dbInfoJson["password"].asString(), dbInfoJson["host"].asString(),
+                    dbInfoJson["port"].asString());
+            }
+            else if (engine == "sqlite")
+            {
+                database = "sqlite3://digitalbits.db";
+            }
+            else
+            {
+                throw std::runtime_error("Uknown DB engine.");
+            }
+            // delete log later, it's for debugging
+            LOG_INFO(DEFAULT_LOG, "DATABASE = {}", database);
+            DATABASE = SecretValue{database};
+        }
+        else
+        {
+            throw std::runtime_error("Could not parse DB Information.");
+        }
+    }
+    else
+    {
+        LOG_INFO(DEFAULT_LOG,
+            "Could not load database configurations from AWS, no ARN provided.");
+    }
+
+    // Fetch NODE_SEED
+    if (NODE_SEED_ARN.size())
+    {
+        auto nodeSeedAws = secretsManager->getSecretById(NODE_SEED_ARN);
+        PublicKey nodeID;
+
+        parseNodeID(nodeSeedAws, nodeID, NODE_SEED, true);
+
+        // Delete logs, only for debugging
+        LOG_INFO(DEFAULT_LOG, "NODE_SEED = {}", nodeSeedAws);
+    }
+    else
+    {
+        LOG_INFO(DEFAULT_LOG,
+            "Could not NODE_SEED from AWS, no ARN provided.");
+    }
+    
+    LOG_INFO(DEFAULT_LOG, "Successfully updated configuration from AWS.");
 }
 
 std::string const Config::STDIN_SPECIAL_NAME = "/dev/stdin";

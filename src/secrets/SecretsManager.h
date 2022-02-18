@@ -3,11 +3,12 @@
 #include <memory>
 #include <string>
 
+
 #include "util/NonCopyable.h"
 
 namespace digitalbits
 {
-class Application;
+class Config;
 /**
  * SecretsManager manager is responsible for communication with a secrets storage,
  * e.g. AWS Secrets Manager.
@@ -16,9 +17,10 @@ class Application;
 class SecretsManager : NonMovableOrCopyable
 {
   public:
-    static std::unique_ptr<SecretsManager> create(Application&);
+    static std::unique_ptr<SecretsManager> create();
 
     virtual ~SecretsManager();
-    virtual std::string getSecret(const std::string&) const = 0;
+    // Get a secret from AWS by its Id (ARN or name).
+    virtual std::string getSecretById(const std::string&) const = 0;
 };
 }

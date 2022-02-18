@@ -6,11 +6,9 @@ namespace digitalbits
 {
 class SecretsManagerImpl : public SecretsManager
 {
-  Application& mApp;
-
 public:
-  SecretsManagerImpl(Application& app);
+  SecretsManagerImpl();
   ~SecretsManagerImpl();
-  std::string getSecret(const std::string&) const override;
+  std::string getSecretById(const std::string&) const override;
 };
 }

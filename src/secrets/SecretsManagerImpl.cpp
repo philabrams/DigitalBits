@@ -1,55 +1,64 @@
 #include "secrets/SecretsManagerImpl.h"
 
+#include <memory>
+#include <stdexcept>
+
 #include <aws/core/Aws.h>
 #include <aws/core/utils/logging/LogLevel.h>
 #include <aws/secretsmanager/SecretsManagerClient.h>
 #include <aws/secretsmanager/model/GetSecretValueRequest.h>
 #include <aws/secretsmanager/model/GetSecretValueResult.h>
+#include <fmt/format.h>
 
 #include "util/Logging.h"
 
 namespace digitalbits 
 {
 std::unique_ptr<SecretsManager>
-SecretsManager::create(Application& app)
+SecretsManager::create()
 {
-    auto secretsManagerPtr = std::make_unique<SecretsManagerImpl>(app);
+    auto secretsManagerPtr = std::make_unique<SecretsManagerImpl>();
     return secretsManagerPtr;
 }
 
 SecretsManager::~SecretsManager() = default;
+
+SecretsManagerImpl::SecretsManagerImpl() = default;
 SecretsManagerImpl::~SecretsManagerImpl() = default;
 
-SecretsManagerImpl::SecretsManagerImpl(Application& app) : mApp(app)
-{
-
-}
-
-std::string SecretsManagerImpl::getSecret(const std::string&) const
+std::string SecretsManagerImpl::getSecretById(const std::string& secretId) const
 {
     Aws::SDKOptions options;
     options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Debug;
-    // jnitialize AWS API
+
     Aws::InitAPI(options);
-    auto secretId = "tutorial/MyFirstSecret";
     Aws::SecretsManager::SecretsManagerClient sm;
     Aws::SecretsManager::Model::GetSecretValueRequest request;
 
     request.SetSecretId(secretId);
     auto outcome = sm.GetSecretValue(request);
+
     if (outcome.IsSuccess())
     {
-        CLOG_INFO(Ledger, "Secret retrieval successful.");
+        CLOG_INFO(SecretsManager, "Secret retrieval successful, ARN {}",
+            secretId);
         auto& result = outcome.GetResult();
-        CLOG_INFO(Ledger, "Secret name {}", result.GetName().c_str());
-        CLOG_INFO(Ledger, "Secret value {}", result.GetSecretString().c_str());
+        std::string output(result.GetSecretString());
+
+        Aws::ShutdownAPI(options);
+
+        return  output;
     }
     else
     {
-        CLOG_INFO(Ledger, "Secret retrieval failed {}", outcome.GetError());
-    }
+        auto message = fmt::format("Secret retrieval failed {}, error {}",
+            secretId, outcome.GetError());
+        CLOG(INFO, "SecretsManager") << message;
 
-    Aws::ShutdownAPI(options);
+        Aws::ShutdownAPI(options);
+        
+        throw std::runtime_error(message);
+    }
 
     return "";
 }
