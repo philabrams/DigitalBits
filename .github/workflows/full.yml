@@ -48,11 +48,21 @@ jobs:
           sudo apt-get update
           sudo apt-get install git build-essential alien pkg-config \
           autoconf automake libtool bison flex libpq-dev libunwind-dev \
-          parallel gcc-8 g++-8 cpp-8 unzip curl \
+          parallel gcc-8 g++-8 cpp-8 unzip curl libcurl4-openssl-dev\
           python3-pip ruby ruby-dev rubygems python3-setuptools 
           pip3 install wheel
           pip3 install cloudsmith-cli
           sudo gem install --no-document fpm
+
+      - name: Build AWS C++ SDK
+        run: |
+          git clone https://github.com/aws/aws-sdk-cpp.git
+          cd aws-sdk-cpp
+          ./prefetch_crt_dependency.sh
+          mkdir build && cd build
+          cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=OFF -DBUILD_ONLY="secretsmanager" -DFORCE_SHARED_CRT=OFF
+          make
+          sudo make install
 
       - name: Build the app    
         run: |
