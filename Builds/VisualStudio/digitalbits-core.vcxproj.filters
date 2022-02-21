@@ -157,6 +157,9 @@
     <Filter Include="lib\tracy">
       <UniqueIdentifier>{59b37591-b830-4d78-9b4f-c7e2ddcea012}</UniqueIdentifier>
     </Filter>
+    <Filter Include="secrets">
+      <UniqueIdentifier>{fda32b53-f65c-4781-b6d0-c0b86b19472f}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\lib\util\getopt_long.c">
@@ -1143,6 +1146,9 @@
     <ClCompile Include="..\..\src\util\Backtrace.cpp">
       <Filter>util</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\src\secrets\SecretsManagerImpl.cpp">
+      <Filter>secrets</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\lib\util\easylogging++.h">
@@ -1990,6 +1996,12 @@
     </ClInclude>
     <ClInclude Include="..\..\src\test\Fuzzer.h">
       <Filter>test</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\secrets\SecretsManager.h">
+      <Filter>secrets</Filter>
+    </ClInclude>
+    <ClInclude Include="..\..\src\secrets\SecretsManagerImpl.h">
+      <Filter>secrets</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
