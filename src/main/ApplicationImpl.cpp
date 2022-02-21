@@ -65,7 +65,6 @@ static const int SHUTDOWN_DELAY_SECONDS = 1;
 
 namespace digitalbits
 {
-// configuration of the application will be set up here
 ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
     : mVirtualClock(clock)
     , mConfig(cfg)

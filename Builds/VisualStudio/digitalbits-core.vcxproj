@@ -614,6 +614,7 @@ exit /b 0
     <ClCompile Include="..\..\src\work\Work.cpp" />
     <ClCompile Include="..\..\src\work\WorkScheduler.cpp" />
     <ClCompile Include="..\..\src\work\WorkSequence.cpp" />
+    <ClCompile Include="..\..\src\secrets\SecretsManagerImpl.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\lib\catch.hpp" />
@@ -893,6 +894,8 @@ exit /b 0
     <ClInclude Include="..\..\src\work\Work.h" />
     <ClInclude Include="..\..\src\work\WorkScheduler.h" />
     <ClInclude Include="..\..\src\work\WorkSequence.h" />
+    <ClInclude Include="..\..\src\secrets\SecretsManager.h" />
+    <ClInclude Include="..\..\src\secrets\SecretsManagerImpl.h" />
     <ClInclude Include="src\generated\xdr\DigitalBits-ledger-entries.h" />
     <ClInclude Include="src\generated\xdr\DigitalBits-ledger.h" />
     <ClInclude Include="src\generated\xdr\DigitalBits-overlay.h" />

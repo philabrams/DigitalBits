@@ -297,8 +297,6 @@ class Application
            bool newDB = true)
     {
         auto ret = std::make_shared<T>(clock, cfg, std::forward<Args>(args)...);
-        // Initialize Application, should we put SecretsManager here or
-        //  do we need it earlier??
         ret->initialize(newDB);
         validateNetworkPassphrase(ret);
 
