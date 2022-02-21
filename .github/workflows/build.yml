@@ -63,6 +63,8 @@ jobs:
 
       - name: Build the app    
         run: |
+           export LDFLAGS="-L/usr/local/opt/openssl@3/lib"
+           export CPPFLAGS="-I/usr/local/opt/openssl@3/include"
            export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
            export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            ./autogen.sh
