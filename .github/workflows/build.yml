@@ -49,22 +49,15 @@ jobs:
         run: |
           brew install automake
           brew install libpqxx 
-          brew install openssl
       
       - name: Build AWS C++ SDK
         run: |
-          git clone https://github.com/aws/aws-sdk-cpp.git
-          cd aws-sdk-cpp
-          ./prefetch_crt_dependency.sh
-          mkdir build && cd build
-          cmake .. -DCMAKE_BUILD_TYPE=Debug -DBUILD_SHARED_LIBS=OFF -DBUILD_ONLY="secretsmanager" -DFORCE_SHARED_CRT=OFF
-          make
-          sudo make install
+          git clone https://github.com/microsoft/vcpkg
+          ./vcpkg/bootstrap-vcpkg.sh
+          ./vcpkg/vcpkg install "aws-sdk-cpp[secretsmanager]:x64-osx" --recurse
 
       - name: Build the app    
         run: |
-           export LDFLAGS="-L/usr/local/opt/openssl@3/lib"
-           export CPPFLAGS="-I/usr/local/opt/openssl@3/include"
            export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
            export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            ./autogen.sh
