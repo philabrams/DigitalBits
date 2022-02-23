@@ -34,9 +34,7 @@ lib_aws_sdk = -laws-cpp-sdk-secretsmanager \
 	-laws-c-cal \
 	-laws-c-common \
 	-lm \
-	-lrt \
 	-lcrypto \
-	-ldl
 	-lpthread 
 
 digitalbits_core_LDADD = $(soci_LIBS) $(libmedida_LIBS)		\
