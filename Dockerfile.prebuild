@@ -1,0 +1,7 @@
+FROM ubuntu:20.04
+
+RUN apt-get update && apt-get install libunwind8 curl libpq-dev -y && rm -rf /var/lib/apt/lists/* 
+
+COPY xdb-core /usr/local/bin/
+
+ENTRYPOINT [ "/usr/local/bin/xdb-core" ]
