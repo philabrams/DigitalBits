@@ -1,0 +1,17 @@
+target_sources(core
+    PRIVATE
+        BasicWork.cpp
+        BasicWork.h
+        BatchWork.cpp
+        BatchWork.h
+        ConditionalWork.cpp
+        ConditionalWork.h
+        Work.cpp
+        Work.h
+        WorkScheduler.cpp
+        WorkScheduler.h
+        WorkSequence.cpp
+        WorkSequence.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/WorkTests.cpp>
+)

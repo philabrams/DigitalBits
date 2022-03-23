@@ -1,0 +1,20 @@
+target_sources(lib3rdparty
+    PRIVATE
+        cbitset.c
+        crc16.cpp
+        getopt_long.c
+        siphash.cpp
+        uint128_t.cpp
+        $<$<BOOL:${USE_EASYLOGGING_OPTION}>:${CMAKE_SOURCE_DIR}/lib/util/easylogging++.cc>
+
+        basen.h
+        cbitset.h
+        cbitset_portability.h
+        cpptoml.h
+        crc16.h
+        finally.h
+        getopt.h
+        siphash.h
+        uint128_t.h
+        $<$<BOOL:${USE_EASYLOGGING_OPTION}>:${CMAKE_SOURCE_DIR}/lib/util/easylogging++.h>
+)

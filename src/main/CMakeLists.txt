@@ -1,0 +1,31 @@
+target_sources(core
+    PRIVATE
+        main.cpp
+        Application.cpp
+        Application.h
+        ApplicationImpl.cpp
+        ApplicationImpl.h
+        ApplicationUtils.cpp
+        ApplicationUtils.h
+        CommandHandler.cpp
+        CommandHandler.h
+        CommandLine.cpp
+        CommandLine.h
+        Config.cpp
+        Config.h
+        DigitalBitsCoreVersion.cpp
+        DigitalBitsCoreVersion.h
+        dumpxdr.cpp
+        dumpxdr.h
+        ErrorMessages.h
+        ExternalQueue.cpp
+        ExternalQueue.h
+        Maintainer.cpp
+        Maintainer.h
+        PersistentState.cpp
+        PersistentState.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/CommandHandlerTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ConfigTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ExternalQueueTests.cpp>
+)

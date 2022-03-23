@@ -1,0 +1,32 @@
+target_sources(core
+    PRIVATE
+        ApplyBucketsWork.cpp
+        ApplyBucketsWork.h
+        ApplyBufferedLedgersWork.cpp
+        ApplyBufferedLedgersWork.h
+        ApplyCheckpointWork.cpp
+        ApplyCheckpointWork.h
+        ApplyLedgerWork.cpp
+        ApplyLedgerWork.h
+        CatchupConfiguration.cpp
+        CatchupConfiguration.h
+        CatchupManager.h
+        CatchupManagerImpl.cpp
+        CatchupManagerImpl.h
+        CatchupRange.cpp
+        CatchupRange.h
+        CatchupWork.cpp
+        CatchupWork.h
+        DownloadApplyTxsWork.cpp
+        DownloadApplyTxsWork.h
+        VerifyLedgerChainWork.cpp
+        VerifyLedgerChainWork.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/HistoryArchiveStream.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/HistoryArchiveStream.h>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/TxSimApplyTransactionsWork.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/TxSimApplyTransactionsWork.h>
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/CatchupWorkTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/CatchupWorkTests.h>
+)

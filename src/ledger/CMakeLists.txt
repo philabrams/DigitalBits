@@ -1,0 +1,40 @@
+target_sources(core
+    PRIVATE
+        CheckpointRange.cpp
+        CheckpointRange.h
+        InMemoryLedgerTxnRoot.cpp
+        InMemoryLedgerTxnRoot.h
+        InternalLedgerEntry.cpp
+        InternalLedgerEntry.h
+        LedgerHashUtils.h
+        LedgerHeaderUtils.cpp
+        LedgerHeaderUtils.h
+        LedgerManager.h
+        LedgerManagerImpl.cpp
+        LedgerManagerImpl.h
+        LedgerRange.cpp
+        LedgerRange.h
+        LedgerTxn.cpp
+        LedgerTxn.h
+        LedgerTxnAccountSQL.cpp
+        LedgerTxnClaimableBalanceSQL.cpp
+        LedgerTxnDataSQL.cpp
+        LedgerTxnEntry.cpp
+        LedgerTxnEntry.h
+        LedgerTxnHeader.cpp
+        LedgerTxnHeader.h
+        LedgerTxnImpl.h
+        LedgerTxnOfferSQL.cpp
+        LedgerTxnTrustLineSQL.cpp
+        NonSociRelatedException.h
+        TrustLineWrapper.cpp
+        TrustLineWrapper.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerCloseMetaStreamTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerHeaderTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerTestUtils.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerTestUtils.h>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerTxnTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LiabilitiesTests.cpp>
+)

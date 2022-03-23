@@ -1,0 +1,31 @@
+target_sources(core
+    PRIVATE
+        BLAKE2.cpp
+        BLAKE2.h
+        ByteSlice.h
+        CryptoError.h
+        Curve25519.cpp
+        Curve25519.h
+        Hex.cpp
+        Hex.h
+        KeyUtils.cpp
+        KeyUtils.h
+        Random.cpp
+        Random.h
+        SHA.cpp
+        SHA.h
+        SecretKey.cpp
+        SecretKey.h
+        ShortHash.cpp
+        ShortHash.h
+        SignerKey.cpp
+        SignerKey.h
+        SignerKeyUtils.cpp
+        SignerKeyUtils.h
+        StrKey.cpp
+        StrKey.h
+        XDRHasher.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/CryptoTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ShortHashTests.cpp>
+)

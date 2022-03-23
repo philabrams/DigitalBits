@@ -1,0 +1,31 @@
+target_sources(core
+    PRIVATE
+        Bucket.cpp
+        Bucket.h
+        BucketApplicator.cpp
+        BucketApplicator.h
+        BucketInputIterator.cpp
+        BucketInputIterator.h
+        BucketList.cpp
+        BucketList.h
+        BucketManager.h
+        BucketManagerImpl.cpp
+        BucketManagerImpl.h
+        BucketMergeMap.cpp
+        BucketMergeMap.h
+        BucketOutputIterator.cpp
+        BucketOutputIterator.h
+        BucketTests.h
+        FutureBucket.cpp
+        FutureBucket.h
+        LedgerCmp.h
+        MergeKey.cpp
+        MergeKey.h
+        PublishQueueBuckets.cpp
+        PublishQueueBuckets.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/BucketListTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/BucketManagerTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/BucketMergeMapTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/BucketTests.cpp>
+)

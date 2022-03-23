@@ -1,0 +1,25 @@
+target_sources(core
+    PRIVATE
+        FileTransferInfo.cpp
+        FileTransferInfo.h
+        HistoryArchive.cpp
+        HistoryArchive.h
+        HistoryArchiveManager.cpp
+        HistoryArchiveManager.h
+        HistoryArchiveReportWork.cpp
+        HistoryArchiveReportWork.h
+        HistoryManager.h
+        HistoryManagerImpl.cpp
+        HistoryManagerImpl.h
+        InferredQuorum.cpp
+        InferredQuorum.h
+        InferredQuorumUtils.cpp
+        InferredQuorumUtils.h
+        StateSnapshot.cpp
+        StateSnapshot.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/HistoryTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/HistoryTestsUtils.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/HistoryTestsUtils.h>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SerializeTests.cpp>
+)

@@ -1,0 +1,39 @@
+target_sources(core
+    PRIVATE
+        Herder.cpp
+        Herder.h
+        HerderImpl.cpp
+        HerderImpl.h
+        HerderPersistence.h
+        HerderPersistenceImpl.cpp
+        HerderPersistenceImpl.h
+        HerderSCPDriver.cpp
+        HerderSCPDriver.h
+        HerderUtils.cpp
+        HerderUtils.h
+        LedgerCloseData.cpp
+        LedgerCloseData.h
+        PendingEnvelopes.cpp
+        PendingEnvelopes.h
+        QuorumIntersectionChecker.h
+        QuorumIntersectionCheckerImpl.cpp
+        QuorumIntersectionCheckerImpl.h
+        QuorumTracker.cpp
+        QuorumTracker.h
+        TransactionQueue.cpp
+        TransactionQueue.h
+        TxSetFrame.cpp
+        TxSetFrame.h
+        Upgrades.cpp
+        Upgrades.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/TxSimTxSetFrame.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/TxSimTxSetFrame.h>
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/HerderTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/PendingEnvelopesTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/QuorumIntersectionTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/QuorumTrackerTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/TransactionQueueTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/UpgradesTests.cpp>
+)

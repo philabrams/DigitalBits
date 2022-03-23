@@ -1,0 +1,10 @@
+target_sources(core
+    PRIVATE
+        CoreTests.cpp
+        LoadGenerator.cpp
+        LoadGenerator.h
+        Simulation.cpp
+        Simulation.h
+        Topologies.cpp
+        Topologies.h
+)

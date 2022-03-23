@@ -1,0 +1,23 @@
+target_sources(core
+    PRIVATE
+        Fuzzer.h
+        FuzzerImpl.cpp
+        FuzzerImpl.h
+        SimpleTestReporter.h
+        TestAccount.cpp
+        TestAccount.h
+        TestExceptions.cpp
+        TestExceptions.h
+        TestMarket.cpp
+        TestMarket.h
+        TestPrinter.cpp
+        TestPrinter.h
+        TestUtils.cpp
+        TestUtils.h
+        TxTests.cpp
+        TxTests.h
+        fuzz.cpp
+        fuzz.h
+        test.cpp
+        test.h
+)

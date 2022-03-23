@@ -6,6 +6,7 @@
 
 #include <array>
 #include <iostream>
+#include <map>
 
 // Provide support for fmt-strings formatting objects that have
 // an overloaded operator<< defined on them.
@@ -13,7 +14,6 @@
 
 #if defined(USE_SPDLOG)
 
-#include <map>
 #include <memory>
 #include <spdlog/spdlog.h>
 

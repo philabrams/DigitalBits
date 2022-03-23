@@ -1,0 +1,21 @@
+target_sources(core
+    PRIVATE
+        BallotProtocol.cpp
+        BallotProtocol.h
+        LocalNode.cpp
+        LocalNode.h
+        NominationProtocol.cpp
+        NominationProtocol.h
+        QuorumSetUtils.cpp
+        QuorumSetUtils.h
+        SCP.cpp
+        SCP.h
+        SCPDriver.cpp
+        SCPDriver.h
+        Slot.cpp
+        Slot.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/QuorumSetTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SCPTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SCPUnitTests.cpp>
+)
