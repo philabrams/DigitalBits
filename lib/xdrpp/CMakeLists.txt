@@ -9,7 +9,7 @@ ExternalProject_Add(libxdrpp
     PREFIX ${XDRPP_BIN}
     SOURCE_DIR ${XDRPP_DIR}
     DOWNLOAD_COMMAND cd ${XDRPP_DIR} && ${XDRPP_DIR}/autogen.sh
-    CONFIGURE_COMMAND ${XDRPP_DIR}/configure --srcdir=${XDRPP_DIR} --prefix=${XDRPP_BIN} --enable-static=yes --disable-shared
+    CONFIGURE_COMMAND ${XDRPP_DIR}/configure --srcdir=${XDRPP_DIR} --prefix=${XDRPP_BIN} --enable-static=yes --disable-shared CC=gcc CXX=g++ -std=c++17
     BUILD_COMMAND ${MAKE}
     INSTALL_COMMAND make install
     BUILD_BYPRODUCTS ${XDRPP_STATIC_LIB})
