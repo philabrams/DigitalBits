@@ -152,9 +152,10 @@ install(FILES ${PKGCONFIG_FILE}
 
 
 ## Testing
-
-enable_testing()
-add_subdirectory(test)
+if(NOT APPLE)
+  enable_testing()
+  add_subdirectory(test)
+endif()
 
 
 ## Documentation

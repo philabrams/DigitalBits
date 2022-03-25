@@ -34,8 +34,7 @@ jobs:
         run: |
            mkdir build
            cmake -S . -B build
-           cd build && make
-          #  cd build && make -j`nproc`
+           cd build && make -j`nproc`
 
   macosbuild:
     runs-on: macos-latest
@@ -50,6 +49,7 @@ jobs:
           brew install automake
           brew install libpqxx
           brew install coreutils
+          brew install pandoc
 
       - name: Build AWS C++ SDK
         run: |
