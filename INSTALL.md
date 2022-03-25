@@ -37,7 +37,7 @@ Packages available as:
 
 - Linux
 
-        curl -1 -O 'https://archive.digitalbits.io/public/raw/files/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
+        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
 
 - Windows
 
