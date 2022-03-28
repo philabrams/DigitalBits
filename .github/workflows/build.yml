@@ -32,9 +32,11 @@ jobs:
 
       - name: Build the app
         run: |
-           mkdir build
-           cmake -S . -B build
-           cd build && make -j`nproc`
+          export ENV CC=clang
+          export ENV CXX=clang++
+          mkdir build
+          cmake -S . -B build
+          cd build && make -j`nproc`
 
   macosbuild:
     runs-on: macos-latest
@@ -63,8 +65,7 @@ jobs:
            export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            mkdir build
            cmake -S . -B build
-           cd build && make
-          #  cd build && make -j`nproc`
+           cd build && make -j`nproc`
 
   # windowsbuild:
   #   runs-on: windows-latest

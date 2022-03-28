@@ -7,9 +7,9 @@ set(CMAKE_CXX_STANDARD_REQUIRED True)
 set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
   CACHE STRING "Vcpkg toolchain file")
-set(BUILD_SHARED_LIBS OFF CACHE STRING "Do not link to shared libraries by default.")
 
 project(digitalbits-core LANGUAGES C CXX)
+set(BUILD_SHARED_LIBS OFF CACHE STRING "Do not link to shared libraries by default.")
 
 # Configuration options
 # Use either easylogging or spdlog
@@ -53,8 +53,6 @@ add_compile_options(
   "$<$<COMPILE_LANG_AND_ID:C,CXX,AppleClang,Clang,GNU>:$<BUILD_INTERFACE:-Wall;-Wextra;-Wpedantic>>"
   "$<$<COMPILE_LANG_AND_ID:C,CXX,MSVC>:$<BUILD_INTERFACE:-W4>>"
 )
-
-message(${CMAKE_SOURCE_DIR})
 
 CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_SOURCE_DIR}/config.h)
 

@@ -124,6 +124,12 @@ target_include_directories(core PRIVATE
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/sqlite>
 )
 
+if(HAVE_LIBUNWIND AND NOT APPLE)
+  set(LINK_LIBUNWIND ON)
+else()
+  set(LINK_LIBUNWIND OFF)
+endif()
+
 target_link_libraries(core
   PRIVATE
     fmt
@@ -134,5 +140,5 @@ target_link_libraries(core
     lib3rdparty
     $<$<BOOL:${USE_SPDLOG_OPTION}>:spdlog>
     ${AWSSDK_LINK_LIBRARIES}
-    $<$<BOOL:${HAVE_LIBUNWIND}>:unwind>
+    $<$<BOOL:${LINK_LIBUNWIND}>:unwind>
 )
