@@ -5,11 +5,21 @@ set(XDRPP_INCLUDES ${XDRPP_BIN}/include)
 
 file(MAKE_DIRECTORY ${XDRPP_INCLUDES})
 
+if(NOT APPLE)
+    if(DEFINED ENV{CC} AND DEFINED ENV{CXX})
+        set(XDRPP_CONFIGURE_COMMAND ${XDRPP_DIR}/configure --srcdir=${XDRPP_DIR} --prefix=${XDRPP_BIN} --enable-static=yes --disable-shared CC=$ENV{CC} CXX=$ENV{CXX})
+    endif()
+endif()
+
+if(NOT DEFINED XDRPP_CONFIGURE_COMMAND)
+    set(XDRPP_CONFIGURE_COMMAND ${XDRPP_DIR}/configure --srcdir=${XDRPP_DIR} --prefix=${XDRPP_BIN} --enable-static=yes --disable-shared)
+endif()
+
 ExternalProject_Add(libxdrpp
     PREFIX ${XDRPP_BIN}
     SOURCE_DIR ${XDRPP_DIR}
     DOWNLOAD_COMMAND cd ${XDRPP_DIR} && ${XDRPP_DIR}/autogen.sh
-    CONFIGURE_COMMAND ${XDRPP_DIR}/configure --srcdir=${XDRPP_DIR} --prefix=${XDRPP_BIN} --enable-static=yes --disable-shared CC=$ENV{CC} CXX=$ENV{CXX}
+    CONFIGURE_COMMAND ${XDRPP_CONFIGURE_COMMAND}
     BUILD_COMMAND ${MAKE}
     INSTALL_COMMAND make install
     BUILD_BYPRODUCTS ${XDRPP_STATIC_LIB})

@@ -32,8 +32,8 @@ jobs:
 
       - name: Build the app
         run: |
-          export ENV CC=clang
-          export ENV CXX=clang++
+          export CC=clang
+          export CXX=clang++
           mkdir build
           cmake -S . -B build
           cd build && make -j`nproc`
