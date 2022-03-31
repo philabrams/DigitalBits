@@ -21,42 +21,17 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/main/DigitalBitsCoreVersion.cpp.in
 add_executable(core "")
 set_target_properties(core PROPERTIES OUTPUT_NAME "digitalbits-core")
 
-# Convert XDR files to headers
-add_custom_command(
-  OUTPUT xdr/DigitalBits-SCP.h
-  COMMAND ${CMAKE_BINARY_DIR}/lib/xdrpp/xdrpp/bin/xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-SCP.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-SCP.x
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-SCP.x
-  VERBATIM)
+set(XDR_CORE_HEADER_NAMES DigitalBits-SCP DigitalBits-ledger-entries DigitalBits-ledger DigitalBits-overlay DigitalBits-transaction DigitalBits-types)
+set(XDR_CORE_HEADERS)
 
-add_custom_command(
-  OUTPUT xdr/DigitalBits-ledger-entries.h
-  COMMAND ${CMAKE_BINARY_DIR}/lib/xdrpp/xdrpp/bin/xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-ledger-entries.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-ledger-entries.x
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-ledger-entries.x
-  VERBATIM)
-
-add_custom_command(
-  OUTPUT xdr/DigitalBits-ledger.h
-  COMMAND ${CMAKE_BINARY_DIR}/lib/xdrpp/xdrpp/bin/xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-ledger.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-ledger.x
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-ledger.x
-  VERBATIM)
-
-add_custom_command(
-  OUTPUT xdr/DigitalBits-overlay.h
-  COMMAND ${CMAKE_BINARY_DIR}/lib/xdrpp/xdrpp/bin/xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-overlay.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-overlay.x
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-overlay.x
-  VERBATIM)
-
-add_custom_command(
-  OUTPUT xdr/DigitalBits-transaction.h
-  COMMAND ${CMAKE_BINARY_DIR}/lib/xdrpp/xdrpp/bin/xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-transaction.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-transaction.x
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-transaction.x
-  VERBATIM)
-
-add_custom_command(
-  OUTPUT xdr/DigitalBits-types.h
-  COMMAND ${CMAKE_BINARY_DIR}/lib/xdrpp/xdrpp/bin/xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-types.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-types.x
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/DigitalBits-types.x
-  VERBATIM)
+foreach(_file ${XDR_CORE_HEADER_NAMES})
+  add_custom_command(
+    OUTPUT ${CMAKE_CURRENT_SOURCE_DIR}/xdr/${_file}.h
+    COMMAND xdrc -hh -o ${CMAKE_CURRENT_SOURCE_DIR}/xdr/${_file}.h ${CMAKE_CURRENT_SOURCE_DIR}/xdr/${_file}.x
+    DEPENDS xdrc
+    VERBATIM)
+  list(APPEND XDR_CORE_HEADERS ${CMAKE_CURRENT_SOURCE_DIR}/xdr/${_file}.h)
+endforeach()
 
 # Copy testdata
 file(COPY 
@@ -72,15 +47,7 @@ file(COPY
 )
 
 
-target_sources(core
-  PRIVATE
-    xdr/DigitalBits-SCP.h
-    xdr/DigitalBits-ledger-entries.h
-    xdr/DigitalBits-ledger.h
-    xdr/DigitalBits-overlay.h
-    xdr/DigitalBits-transaction.h
-    xdr/DigitalBits-types.h
-)
+target_sources(core PRIVATE ${XDR_CORE_HEADERS})
 
 # Add sources
 add_subdirectory(bucket)
