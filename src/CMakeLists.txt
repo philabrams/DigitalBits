@@ -1,5 +1,3 @@
-message("Building src")
-
 find_package(AWSSDK REQUIRED COMPONENTS secretsmanager)
 find_package(ZLIB)
 
@@ -20,6 +18,10 @@ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/main/DigitalBitsCoreVersion.cpp.in
 
 add_executable(core "")
 set_target_properties(core PROPERTIES OUTPUT_NAME "digitalbits-core")
+
+if(MSVC)
+  target_compile_definitions(core PRIVATE /bigobj)
+endif()
 
 set(XDR_CORE_HEADER_NAMES DigitalBits-SCP DigitalBits-ledger-entries DigitalBits-ledger DigitalBits-overlay DigitalBits-transaction DigitalBits-types)
 set(XDR_CORE_HEADERS)
@@ -108,4 +110,5 @@ target_link_libraries(core
     $<$<BOOL:${USE_SPDLOG_OPTION}>:spdlog>
     ${AWSSDK_LINK_LIBRARIES}
     $<$<BOOL:${LINK_LIBUNWIND}>:unwind>
+    $<$<CXX_COMPILER_ID:MSVC>:credui>
 )

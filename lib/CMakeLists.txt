@@ -1,5 +1,3 @@
-message("Bulding libs")
-
 include(ExternalProject)
 
 add_library(lib3rdparty STATIC "")
@@ -7,7 +5,25 @@ set_target_properties(lib3rdparty PROPERTIES OUTPUT_NAME "lib3rdparty")
 
 # Cmake projects
 add_subdirectory(fmt)
-add_subdirectory(libmedida)
+
+if(MSVC)
+    message(${CMAKE_BINARY_DIR})
+    set(MEDIDA_STATIC_LIB_DEBUG ${CMAKE_BINARY_DIR}/x64/Debug/libmedida.lib)
+    set(MEDIDA_STATIC_LIB_RELEASE ${CMAKE_BINARY_DIR}/x64/Release/libmedida.lib)
+
+    include_external_msproject(libmedida ${CMAKE_CURRENT_SOURCE_DIR}/libmedida/libmedida.vcxproj)
+
+    add_library(medida STATIC IMPORTED GLOBAL)
+    add_dependencies(medida libmedida)
+
+    set_target_properties(medida PROPERTIES
+        IMPORTED_LOCATION "${MEDIDA_STATIC_LIB_RELEASE}"
+        IMPORTED_LOCATION_DEBUG "${MEDIDA_STATIC_LIB_DEBUG}"
+        IMPORTED_CONFIGURATIONS "RELEASE;DEBUG")
+else()
+    add_subdirectory(libmedida)
+endif()
+
 add_subdirectory(soci)
 
 if(USE_SPDLOG_OPTION)

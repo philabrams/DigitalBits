@@ -46,8 +46,25 @@ endif()
 
 add_compile_definitions(ASIO_SEPARATE_COMPILATION=1)
 add_compile_definitions(ASIO_STANDALONE)
+add_compile_definitions(ASIO_ERROR_CATEGORY_NOEXCEPT=noexcept)
 add_compile_definitions(SQLITE_CORE)
 add_compile_definitions(SQLITE_OMIT_LOAD_EXTENSION=1)
+add_compile_definitions(SODIUM_STATIC)
+add_compile_definitions(TRACY_ENABLE)
+add_compile_definitions(TRACY_ON_DEMAND)
+add_compile_definitions(TRACY_NO_BROADCAST)
+add_compile_definitions(TRACY_ONLY_LOCALHOST)
+add_compile_definitions(USE_TRACY)
+
+if(MSVC)
+  add_compile_definitions(WIN32_LEAN_AND_MEAN)
+  add_compile_definitions(NOMINMAX)
+  add_compile_definitions(_WINSOCK_DEPRECATED_NO_WARNINGS)
+  add_compile_definitions(_CRT_SECURE_NO_WARNINGS)
+  add_compile_definitions(_WIN32_WINNT=0x0601)
+  add_compile_definitions(_MBCS)
+  add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
+endif()
 
 add_compile_options(
   "$<$<COMPILE_LANG_AND_ID:C,CXX,AppleClang,Clang,GNU>:$<BUILD_INTERFACE:-Wall;-Wextra;-Wpedantic>>"

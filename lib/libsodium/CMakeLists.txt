@@ -1,14 +1,17 @@
 if(MSVC)
-    set(SODIUM_STATIC_LIB_DEBUG ${CMAKE_CURRENT_BINARY_DIR}/x64/Debug/libsodium.lib)
-    set(SODIUM_STATIC_LIB_RELEASE ${CMAKE_CURRENT_BINARY_DIR}/x64/Release/libsodium.lib)
+    set(SODIUM_STATIC_LIB_DEBUG ${CMAKE_CURRENT_SOURCE_DIR}/bin/x64/Debug/v142/static/libsodium.lib)
+    set(SODIUM_STATIC_LIB_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/bin/x64/Release/v142/static/libsodium.lib)
 
-    include_external_msproject(libsodium ${CMAKE_CURRENT_SOURCE_DIR}/libsodium.vcxproj)
+    include_external_msproject(libsodium ${CMAKE_CURRENT_SOURCE_DIR}/builds/msvc/vs2019/libsodium/libsodium.vcxproj)
+    set_target_properties(libsodium PROPERTIES
+        MAP_IMPORTED_CONFIG_RELEASE ReleaseLIB
+        MAP_IMPORTED_CONFIG_DEBUG DebugLIB)
 
     add_library(sodium STATIC IMPORTED GLOBAL)
     add_dependencies(sodium libsodium)
 
     set_target_properties(sodium PROPERTIES
-        IMPORTED_LOCATION "${SODIUM_STATIC_LIB_RELEASE}"
+        IMPORTED_LOCATION_RELEASE "${SODIUM_STATIC_LIB_RELEASE}"
         IMPORTED_LOCATION_DEBUG "${SODIUM_STATIC_LIB_DEBUG}"
         IMPORTED_CONFIGURATIONS "RELEASE;DEBUG")
 else()
