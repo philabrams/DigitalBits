@@ -84,23 +84,23 @@ When running a node, the best bet is to go with the latest release.
 - `clang` >= 3.5 or `g++` >= 4.9
 - `pkg-config`
 - `bison` and `flex`
-- `libpq-dev` unless you `./configure --disable-postgres` in the build step below.
+- `libpq-dev` unless you set `USE_POSTGRES_OPTION` to `OFF`.
+- `cmake` >= 3.22
 - 64-bit system
 - `clang-format-5.0` (for `make format` to work)
 
 ### Ubuntu 16.04
 
-    # sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+    # sudo apt-get install -y software-properties-common
+    # sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
     # sudo apt-get update
-    # sudo apt-get install git build-essential pkg-config autoconf automake libtool bison flex libpq-dev clang++-3.5 gcc-4.9 g++-4.9 cpp-4.9
+    # sudo apt-get install git build-essential alien pkg-config autoconf automake libtool bison flex libpq-dev libunwind-dev parallel gcc-8 g++-8 cpp-8 unzip curl pandoc
+
 
 In order to make changes, you'll need to install the proper version of clang-format (you may have to follow instructions on https://apt.llvm.org/ )
     # sudo apt-get install clang-format-5.0
 
 See [installing gcc 4.9 on ubuntu 16.04](http://askubuntu.com/questions/428198/getting-installing-gcc-g-4-9-on-ubuntu)
-
-Additional, for proper documentation generation (man page), pandoc is needed:
-    # sudo apt-get install pandoc
 
 ### OS X
 When building on OSX, here's some dependencies you'll need:
@@ -110,7 +110,7 @@ When building on OSX, here's some dependencies you'll need:
 - brew install libtool
 - brew install automake
 - brew install pkg-config
-- brew install libpqxx *(If ./configure later complains about libpq missing, try PKG_CONFIG_PATH='/usr/local/lib/pkgconfig')*
+- brew install libpqxx *(If you see complains about libpq missing, try PKG_CONFIG_PATH='/usr/local/lib/pkgconfig')*
 
 ### Windows
 See [INSTALL-Windows.md](INSTALL-Windows.md)
@@ -121,9 +121,9 @@ See [INSTALL-Windows.md](INSTALL-Windows.md)
 - `cd digitalbits`
 - `git submodule init`
 - `git submodule update`
-- Type `./autogen.sh`.
-- Type `./configure`   *(If configure complains about compiler versions, try `CXX=clang-3.5 ./configure` or `CXX=g++-4.9 ./configure` or similar, depending on your compiler.)*
-- Type `make` or `make -j` (for aggressive parallel build)
+- Type `mkdir build`.
+- Type `cmake -S . -B build`
+- Type `cd build && make` or `cd build && make -j` (for aggressive parallel build)
 - Type `make check` to run tests.
 - Type `make install` to install.
 

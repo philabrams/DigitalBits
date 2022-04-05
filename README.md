@@ -35,26 +35,26 @@ For bugs being opened/re-opened, simply paste and fill the [Bug-Template.md](./B
 # Running tests
 
 run tests with:
-  `src/digitalbits-core --test`
+  `src/digitalbits-core test`
 
 run one test with:
-  `src/digitalbits-core --test  testName`
+  `src/digitalbits-core test  testName`
 
 run one test category with:
-  `src/digitalbits-core --test '[categoryName]'`
+  `src/digitalbits-core test '[categoryName]'`
 
 Categories (or tags) can be combined: AND-ed (by juxtaposition) or OR-ed (by comma-listing).
 
 Tests tagged as [.] or [hide] are not part of the default test test.
 
 supported test options can be seen with
-  `src/digitalbits-core --test --help`
+  `src/digitalbits-core test --help`
 
 display tests timing information:
-  `src/digitalbits-core --test -d yes '[categoryName]'`
+  `src/digitalbits-core test -d yes '[categoryName]'`
 
 xml test output (includes nested section information):
-  `src/digitalbits-core --test -r xml '[categoryName]'`
+  `src/digitalbits-core test -r xml '[categoryName]'`
 
 # Running tests against postgreSQL
 
@@ -81,6 +81,6 @@ are appropriately set, then run the following from bash:
 We adopt the convention of tagging a stress-test for subsystem foo as [foo-stress][stress][hide].
 
 Then, running
-* `digitalbits-core --test [stress]` will run all the stress tests,
-* `digitalbits-core --test [foo-stress]` will run the stress tests for subsystem foo alone, and
-* neither `digitalbits-core --test` nor `digitalbits-core --test [foo]` will run stress tests.
+* `digitalbits-core test [stress]` will run all the stress tests,
+* `digitalbits-core test [foo-stress]` will run the stress tests for subsystem foo alone, and
+* neither `digitalbits-core test` nor `digitalbits-core test [foo]` will run stress tests.
