@@ -129,12 +129,16 @@ jobs:
         run: |
             msbuild.exe build\digitalbits-core.sln /p:platform="x64" /p:configuration="Release" /p:AdditionalLibPaths="C:\Program Files\PostgreSQL\9.5\include"
   
-  # dockerbuild:
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v2
-  #       with:
-  #         fetch-depth: '0'
+  dockerbuild:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
 
-  #     - name: Build Docker Image
-  #       run: docker build -t digitalbits-core .
+      - name: Fetch git tags
+        run: |
+          git fetch --prune --unshallow --tags
+
+      - name: Build Docker Image
+        run: docker build -t digitalbits-core .

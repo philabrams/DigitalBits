@@ -112,3 +112,5 @@ target_link_libraries(core
     $<$<BOOL:${LINK_LIBUNWIND}>:unwind>
     $<$<CXX_COMPILER_ID:MSVC>:credui>
 )
+
+install(TARGETS core)
