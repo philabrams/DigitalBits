@@ -13,7 +13,7 @@ Packages available as:
 
 1. Configure digitalbits-core repository from cloudsmith.io:
 
-        curl -1sLf 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/setup.deb.sh' | sudo -E bash
+        curl -1sLf 'https://archive.digitalbits.io/public/digitalbits-core/setup.deb.sh' | sudo -E bash
 
 2. Install digitalbits-core package:
 
@@ -23,7 +23,7 @@ Packages available as:
 ## RPM-based
 1. Configure digitalbits-core repository from cloudsmith.io:
 
-        curl -1sLf 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/setup.rpm.sh' | sudo -E bash
+        curl -1sLf 'https://archive.digitalbits.io/public/digitalbits-core/setup.rpm.sh' | sudo -E bash
 
 2. Install digitalbits-core package:
 
@@ -33,20 +33,20 @@ Packages available as:
 
 - MacOS
 
-        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_${VERSION}_darwin-amd64.tar.gz'
+        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_darwin-amd64.tar.gz'
 
 - Linux
 
-        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
+        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
 
 - Windows
 
-        curl -O 'https://dl.cloudsmith.io/public/xdb-foundation/digitalbits-core/raw/files/digitalbits-core_${VERSION}_windows-amd64.tar.gz'
+        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_windows-amd64.tar.gz'
 
 
 ## Docker image
 
-    docker pull docker.cloudsmith.io/xdb-foundation/digitalbits-core/digitalbits-core:latest
+    docker pull docker.digitalbits.io/digitalbits-core/digitalbits-core:latest
 
 ==================
 ## From sources
