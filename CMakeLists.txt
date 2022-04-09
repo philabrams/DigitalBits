@@ -11,6 +11,10 @@ set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/
 project(digitalbits-core LANGUAGES C CXX)
 set(BUILD_SHARED_LIBS OFF CACHE STRING "Do not link to shared libraries by default.")
 
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 # Configuration options
 # Use either easylogging or spdlog
 option(USE_EASYLOGGING_OPTION "Use easylogging library" ON)
