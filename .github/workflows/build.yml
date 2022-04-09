@@ -113,17 +113,13 @@ jobs:
         run: |
           .\vcpkg\bootstrap-vcpkg.bat
           .\vcpkg\vcpkg integrate install
-          .\vcpkg\vcpkg install "aws-sdk-cpp[secretsmanager]:x64-windows" --recurse
-          .\vcpkg\vcpkg install "zlib:x64-windows"
-
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v1.0.5
+          .\vcpkg\vcpkg install "aws-sdk-cpp[secretsmanager]:x64-windows-static" --recurse
+          .\vcpkg\vcpkg install "zlib:x64-windows-static"
       
       - name: Prepare Solution
         run: |
           mkdir build
-          cmake -S . -B build
-          nuget restore build\digitalbits-core.sln
+          cmake -S . -B build -DVCPKG_TARGET_TRIPLET=x64-windows-static
 
       - name: Build Solution
         run: |

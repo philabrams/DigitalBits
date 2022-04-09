@@ -85,7 +85,7 @@ include_directories(
   ${medida_BINARY_DIR}
 )
 
-add_library(medida SHARED
+add_library(medida STATIC
   ${medida_SOURCES}
   ${medida_PROTO_SRCS}
 )

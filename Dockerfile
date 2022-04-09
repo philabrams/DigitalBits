@@ -31,6 +31,5 @@ RUN export CC=clang && export CXX=clang++ && \
 # update libraries to be copied with the executable
 FROM ubuntu:20.04
 RUN apt-get update && apt-get install libunwind8 curl libpq-dev -y && rm -rf /var/lib/apt/lists/* 
-COPY --from=build /usr/local/lib/libmedida.so /usr/local/lib/
 COPY --from=build /usr/local/bin/digitalbits-core /usr/local/bin/
 ENTRYPOINT [ "/usr/local/bin/digitalbits-core" ]
