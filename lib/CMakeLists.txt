@@ -7,7 +7,6 @@ set_target_properties(lib3rdparty PROPERTIES OUTPUT_NAME "lib3rdparty")
 add_subdirectory(fmt)
 
 if(MSVC)
-    message(${CMAKE_BINARY_DIR})
     set(MEDIDA_STATIC_LIB_DEBUG ${CMAKE_BINARY_DIR}/x64/Debug/libmedida.lib)
     set(MEDIDA_STATIC_LIB_RELEASE ${CMAKE_BINARY_DIR}/x64/Release/libmedida.lib)
 

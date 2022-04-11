@@ -28,18 +28,18 @@ CHECK_INCLUDE_FILES(libunwind.h HAVE_LIBUNWIND)
 
 # Define preprocessor macros
 if(USE_EASYLOGGING_OPTION AND (NOT USE_SPDLOG_OPTION))
-    message("Using Easylogging++ for logging.")
+    message(STATUS "Using Easylogging++ for logging.")
     add_compile_definitions(USE_EASYLOGGING)
 endif()
 
 if(USE_SPDLOG_OPTION AND (NOT USE_EASYLOGGING_OPTION))
-    message("Using spdlog for logging.")
+    message(STATUS "Using spdlog for logging.")
     add_compile_definitions(USE_SPDLOG)
 endif()
 
 # We should configure option inclusion of unit tests
 if(BUILD_TESTS_OPTION)
-    message("Unit test files are included.")
+    message(STATUS "Unit test files are included.")
     add_compile_definitions(BUILD_TESTS=1)
 endif()
 

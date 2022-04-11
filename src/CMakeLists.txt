@@ -12,12 +12,13 @@ string(REGEX REPLACE "^[0-9]+\\.[0-9]+\\.([0-9]+).*" "\\1" VERSION_PATCH "${VERS
 string(REGEX REPLACE "^[0-9]+\\.[0-9]+\\.[0-9]+(.*)" "\\1" VERSION_SHA1 "${VERSION}")
 
 set(VERSION_SHORT "${VERSION_MAJOR}.${VERSION_MINOR}.${VERSION_PATCH}")
+set(CORE_EXE_OUTPUT_NAME digitalbits-core)
 
 configure_file(${CMAKE_CURRENT_SOURCE_DIR}/main/DigitalBitsCoreVersion.cpp.in
                ${CMAKE_CURRENT_SOURCE_DIR}/main/DigitalBitsCoreVersion.cpp)
 
 add_executable(core "")
-set_target_properties(core PROPERTIES OUTPUT_NAME "digitalbits-core")
+set_target_properties(core PROPERTIES OUTPUT_NAME ${CORE_EXE_OUTPUT_NAME})
 
 if(MSVC)
   target_compile_definitions(core PRIVATE /bigobj)
@@ -114,3 +115,18 @@ target_link_libraries(core
 )
 
 install(TARGETS core)
+
+if(UNIX AND BUILD_TESTS_OPTION)
+  if(USE_POSTGRES_OPTION)
+    set(DB_SELF_TEST_CMD ./test/selftest-pg)
+  else()
+    set(DB_SELF_TEST_CMD ./test/selftest-nopg)
+  endif()
+
+  add_custom_target(check
+    COMMAND cp ${CMAKE_BINARY_DIR}/src/${CORE_EXE_OUTPUT_NAME} ${CMAKE_SOURCE_DIR}/src && ${DB_SELF_TEST_CMD}
+    COMMENT "Running unit tests..."
+    DEPENDS core
+    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/src
+  )
+endif()
