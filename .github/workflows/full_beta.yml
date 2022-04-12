@@ -3,7 +3,7 @@ name: Beta Release For All Platforms
 on:
   push:
     branches: 
-      - 'beta'
+      - 'beta/**'
   workflow_dispatch:
 jobs:
   tagbump:
@@ -12,6 +12,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Github Tag Bump
@@ -37,6 +38,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Get Latest Tag
@@ -122,6 +124,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Get Latest Tag
@@ -168,6 +171,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Install PostgresQL
