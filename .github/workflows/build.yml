@@ -11,11 +11,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
-
-      - name: Fetch git tags
-        run: |
-          git fetch --prune --unshallow --tags
 
       - name: Install deps
         run: |
@@ -46,11 +43,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
-
-      - name: Fetch git tags
-        run: |
-          git fetch --prune --unshallow --tags
 
       - name: Install deps
         run: |
@@ -78,11 +72,9 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
-      - name: Fetch git tags
-        run: |
-          git fetch --prune --unshallow --tags
 
       - name: Install PostgresQL
         run: |
@@ -130,11 +122,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
-
-      - name: Fetch git tags
-        run: |
-          git fetch --prune --unshallow --tags
 
       - name: Build Docker Image
         run: docker build -t digitalbits-core .

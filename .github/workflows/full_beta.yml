@@ -3,7 +3,7 @@ name: Beta Release For All Platforms
 on:
   push:
     branches: 
-      - 'beta'
+      - 'beta/**'
   workflow_dispatch:
 jobs:
   tagbump:
@@ -12,6 +12,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Github Tag Bump
@@ -37,6 +38,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Get Latest Tag
@@ -51,7 +53,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install git build-essential alien pkg-config \
           autoconf automake libtool bison flex libpq-dev libunwind-dev \
-          parallel gcc-8 g++-8 cpp-8 unzip curl pandoc\
+          parallel gcc-8 g++-8 cpp-8 unzip curl pandoc \
           python3-pip ruby ruby-dev rubygems python3-setuptools 
           pip3 install wheel
           pip3 install cloudsmith-cli
@@ -122,6 +124,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Get Latest Tag
@@ -168,6 +171,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
+          fetch-depth: '0'
           submodules: recursive
 
       - name: Install PostgresQL
