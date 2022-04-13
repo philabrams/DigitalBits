@@ -36,7 +36,7 @@ jobs:
           export CXX=clang++
           mkdir build
           cmake -S . -B build
-          cd build && make -j`nproc`
+          make -j`nproc` -C build
 
   macosbuild:
     runs-on: macos-latest
@@ -65,7 +65,7 @@ jobs:
            export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            mkdir build
            cmake -S . -B build
-           cd build && make -j`nproc`
+           make -j`nproc` -C build
 
   windowsbuild:
     runs-on: windows-latest
