@@ -75,7 +75,7 @@ jobs:
            make -j`nproc` -C build
            sudo make install -C build
            mkdir /opt/digitalbits    
-           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core 
+           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core
            sudo cp /usr/local/bin/digitalbits-core ./xdb-core
            sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
@@ -136,7 +136,7 @@ jobs:
       - name: Install deps
         run: |
           brew install automake
-          brew install libpqxx 
+          brew install libpqxx
           brew install coreutils
           brew install pandoc
           pip install --upgrade cloudsmith-cli
@@ -155,7 +155,7 @@ jobs:
            cmake -S . -B build
            make -j`nproc` -C build
            sudo make install -C build
-           sudo mkdir /opt/digitalbits    
+           sudo mkdir /opt/digitalbits
            sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core
            sudo tar -czvf digitalbits-core-darwin-amd64.tar.gz /opt/digitalbits/digitalbits-core
          
@@ -165,7 +165,7 @@ jobs:
             sudo cp digitalbits-core-darwin-amd64.tar.gz $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
             export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
             cloudsmith push raw --republish xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
-      
+
   windowsbuild:
     needs: tagbump
     # The type of runner that the job will run on
