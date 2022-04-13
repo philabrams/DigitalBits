@@ -26,6 +26,7 @@ jobs:
 
       - uses: ncipollo/release-action@v1
         with:
+          allowUpdates: true
           tag: ${{ steps.bump_version.outputs.tag }}
           bodyFile: "README.md"
           token: ${{ secrets.GITHUB_TOKEN }}
