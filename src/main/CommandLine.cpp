@@ -459,7 +459,6 @@ CommandLine::ConfigOption::getConfig(bool logToFile) const
     // yes you really have to do this 3 times
     Logging::setLogLevel(mLogLevel, nullptr);
     config.load(configFile);
-    config.loadAwsSecrets();
 
     Logging::setFmt(KeyUtils::toShortString(config.NODE_SEED.getPublicKey()));
     Logging::setLogLevel(mLogLevel, nullptr);

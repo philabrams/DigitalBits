@@ -8,6 +8,10 @@ set(CMAKE_VERBOSE_MAKEFILE ON)
 set(CMAKE_TOOLCHAIN_FILE ${CMAKE_CURRENT_SOURCE_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake
   CACHE STRING "Vcpkg toolchain file")
 
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+endif()
+
 project(digitalbits-core LANGUAGES C CXX)
 set(BUILD_SHARED_LIBS OFF CACHE STRING "Do not link to shared libraries by default.")
 
@@ -24,7 +28,7 @@ option(BUILD_TESTS_OPTION "Build unit test files" ON)
 option(USE_POSTGRES_OPTION "Use PostgreSQL for storage" ON)
 
 # Additional platform checks
-CHECK_INCLUDE_FILES(libunwind.h HAVE_LIBUNWIND)
+# CHECK_INCLUDE_FILES(libunwind.h HAVE_LIBUNWIND)
 
 # Define preprocessor macros
 if(USE_EASYLOGGING_OPTION AND (NOT USE_SPDLOG_OPTION))
@@ -68,12 +72,10 @@ if(MSVC)
   add_compile_definitions(_WIN32_WINNT=0x0601)
   add_compile_definitions(_MBCS)
   add_compile_definitions(_CRT_NONSTDC_NO_DEPRECATE)
+  add_compile_options(/W4)
+else()
+  add_compile_options(-Wall -Wextra -pedantic)
 endif()
-
-add_compile_options(
-  "$<$<COMPILE_LANG_AND_ID:C,CXX,AppleClang,Clang,GNU>:$<BUILD_INTERFACE:-Wall;-Wextra;-Wpedantic>>"
-  "$<$<COMPILE_LANG_AND_ID:C,CXX,MSVC>:$<BUILD_INTERFACE:-W4>>"
-)
 
 CONFIGURE_FILE(${CMAKE_SOURCE_DIR}/config.h.in ${CMAKE_SOURCE_DIR}/config.h)
 

@@ -22,6 +22,12 @@ set_target_properties(core PROPERTIES OUTPUT_NAME ${CORE_EXE_OUTPUT_NAME})
 
 if(MSVC)
   target_compile_definitions(core PRIVATE /bigobj)
+else()
+  target_compile_options(core PUBLIC 
+    "$<$<CONFIG:DEBUG>:-g>"
+    "$<$<CONFIG:DEBUG>:-O0>"
+    "$<$<CONFIG:RELEASE>:-O3>"
+  )
 endif()
 
 set(XDR_CORE_HEADER_NAMES DigitalBits-SCP DigitalBits-ledger-entries DigitalBits-ledger DigitalBits-overlay DigitalBits-transaction DigitalBits-types)
@@ -66,7 +72,6 @@ add_subdirectory(main)
 add_subdirectory(overlay)
 add_subdirectory(process)
 add_subdirectory(scp)
-add_subdirectory(secrets)
 add_subdirectory(transactions)
 add_subdirectory(util)
 add_subdirectory(work)

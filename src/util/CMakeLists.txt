@@ -1,6 +1,8 @@
 target_sources(core
     PRIVATE
         Algoritm.h
+        AwsSecrets.cpp
+        AwsSecrets.h
         Backtrace.cpp
         Backtrace.h
         BitSet.h

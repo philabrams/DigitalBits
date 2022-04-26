@@ -99,6 +99,9 @@ class Config : public std::enable_shared_from_this<Config>
     void verifyHistoryValidatorsBlocking(
         std::vector<ValidatorEntry> const& validators);
 
+    // Update application configuration with secrets stored in AWS.
+    void loadDbConfigAws();
+
   public:
     static const uint32 CURRENT_LEDGER_PROTOCOL_VERSION;
 
@@ -401,10 +404,6 @@ class Config : public std::enable_shared_from_this<Config>
 
     void load(std::string const& filename);
     void load(std::istream& in);
-    // Update application configuration with secrets stored in AWS.
-    // Should be called before an ApplicationImpl instance is created.
-    void loadAwsSecrets();
-
     // fixes values of connection-relates settings
     void adjust();
 

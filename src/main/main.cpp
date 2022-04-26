@@ -5,8 +5,10 @@
 #include "main/CommandLine.h"
 #include "util/Backtrace.h"
 #include "util/Logging.h"
-
 #include "crypto/ShortHash.h"
+
+#include <aws/core/Aws.h>
+#include <aws/core/utils/logging/LogLevel.h>
 #include <cstdlib>
 #include <exception>
 #include <sodium/core.h>
@@ -35,6 +37,10 @@ outOfMemory()
 int
 main(int argc, char* const* argv)
 {
+    Aws::SDKOptions options;
+    options.loggingOptions.logLevel = Aws::Utils::Logging::LogLevel::Off;
+    Aws::InitAPI(options);
+
     using namespace digitalbits;
     BacktraceManager btGuard;
 
@@ -48,11 +54,16 @@ main(int argc, char* const* argv)
     if (sodium_init() != 0)
     {
         LOG_FATAL(DEFAULT_LOG, "Could not initialize crypto");
+        Aws::ShutdownAPI(options);
         return 1;
     }
     shortHash::initialize();
 
     xdr::marshaling_stack_limit = 1000;
 
-    return handleCommandLine(argc, argv);
+    auto result = handleCommandLine(argc, argv);
+
+    Aws::ShutdownAPI(options);
+
+    return result;
 }
