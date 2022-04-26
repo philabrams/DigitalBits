@@ -26,6 +26,7 @@ option(USE_SPDLOG_OPTION "Use spdlog library" OFF)
 
 option(BUILD_TESTS_OPTION "Build unit test files" ON)
 option(USE_POSTGRES_OPTION "Use PostgreSQL for storage" ON)
+option(USE_TRACY_OPTION "Enable profiling" OFF)
 
 # Additional platform checks
 # CHECK_INCLUDE_FILES(libunwind.h HAVE_LIBUNWIND)
@@ -58,11 +59,15 @@ add_compile_definitions(ASIO_ERROR_CATEGORY_NOEXCEPT=noexcept)
 add_compile_definitions(SQLITE_CORE)
 add_compile_definitions(SQLITE_OMIT_LOAD_EXTENSION=1)
 add_compile_definitions(SODIUM_STATIC)
-add_compile_definitions(TRACY_ENABLE)
-add_compile_definitions(TRACY_ON_DEMAND)
-add_compile_definitions(TRACY_NO_BROADCAST)
-add_compile_definitions(TRACY_ONLY_LOCALHOST)
-add_compile_definitions(USE_TRACY)
+
+if(USE_TRACY_OPTION)
+  add_compile_definitions(USE_TRACY)
+  add_compile_definitions(TRACY_ENABLE)
+  add_compile_definitions(TRACY_ON_DEMAND)
+  add_compile_definitions(TRACY_NO_BROADCAST)
+  add_compile_definitions(TRACY_ONLY_LOCALHOST)
+  add_compile_definitions(TRACY_ONLY_IPV4)
+endif()
 
 if(MSVC)
   add_compile_definitions(WIN32_LEAN_AND_MEAN)

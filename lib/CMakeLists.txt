@@ -37,7 +37,11 @@ add_subdirectory(xdrpp)
 add_subdirectory(http)
 add_subdirectory(json)
 add_subdirectory(sqlite)
-add_subdirectory(tracy)
+
+if(USE_TRACY_OPTION)
+    add_subdirectory(tracy)
+endif()
+
 add_subdirectory(util)
 
 target_sources(lib3rdparty
