@@ -88,6 +88,17 @@ jobs:
             digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
             digitalbits-core=/etc/logrotate.d/digitalbits-core
       
+      - name: AWS SSM Send-Command
+        uses: peterkimzz/aws-ssm-send-command@master
+        id: ssm
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          instance-ids: i-0099c17f2fdc0ae41
+          working-directory: /home/ubuntu/
+          command: sudo dpkg -i  $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+
       - name: Make .rpm package
         run: | 
           sudo alien -r -k $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
