@@ -3,7 +3,7 @@ name: Beta Release For All Platforms
 on:
   push:
     branches: 
-      - 'beta'
+      - 'DB-80'
   workflow_dispatch:
 jobs:
   tagbump:
@@ -95,7 +95,7 @@ jobs:
           aws-region: ${{ secrets.AWS_REGION }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          instance-ids: i-0099c17f2fdc0ae41
+          instance-ids: i-010cc2b23ad15b9e8
           working-directory: /home/ubuntu/
           command: sudo dpkg -i  $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
 
