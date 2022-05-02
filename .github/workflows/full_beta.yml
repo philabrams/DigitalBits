@@ -24,7 +24,7 @@ jobs:
 
       - uses: ncipollo/release-action@v1
         with:
-          tag: db-80-2
+          tag: db-80-3
 #          tag: ${{ steps.bump_version.outputs.tag }}
           bodyFile: "README.md"
           token: ${{ secrets.GITHUB_TOKEN }}   
@@ -88,7 +88,22 @@ jobs:
             /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
             digitalbits-core=/etc/logrotate.d/digitalbits-core
-      
+
+      - name: Make .rpm package
+        run: | 
+          sudo alien -r -k db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+          sudo cp digitalbits-core-linux-amd64.tar.gz db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+
+      - name: Upload to cloudsmith.io
+        run: |
+          export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
+          export PATH=$PATH:$HOME/.local/bin
+          
+          cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version db-80-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
+          cloudsmith push raw xdb-foundation/digitalbits-core db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+
+
       - name: AWS SSM Send-Command
         uses: peterkimzz/aws-ssm-send-command@master
         id: ssm
@@ -98,24 +113,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           instance-ids: i-010cc2b23ad15b9e8
           working-directory: /home/ubuntu/
-          command: sudo dpkg -i  db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+          command: wget https://archive.digitalbits.io/public/digitalbits-core/deb/ubuntu/pool/focal/main/b/be/beta-digitalbits-core_1.0.61-beta.4/beta-digitalbits-core_1.0.61-beta.4_amd64.deb && sudo dpkg -i  db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
 
       - name: Get the outputs
         run: echo "The Command id is ${{ steps.ssm.outputs.command-id }}"
-
- #     - name: Make .rpm package
- #       run: | 
- #         sudo alien -r -k db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
- #         sudo cp digitalbits-core-linux-amd64.tar.gz db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
-
- #     - name: Upload to cloudsmith.io
- #       run: |
- #         export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
- #         export PATH=$PATH:$HOME/.local/bin
-          
- #         cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
- #         cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version db-80-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
- #         cloudsmith push raw xdb-foundation/digitalbits-core db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
   # This workflow contains a single job called "build"
 #  macosbuild:
