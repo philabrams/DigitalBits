@@ -113,7 +113,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           instance-ids: i-010cc2b23ad15b9e8
           working-directory: /home/ubuntu/
-          command: wget https://archive.digitalbits.io/public/digitalbits-core/deb/ubuntu/pool/focal/main/b/be/beta-digitalbits-core_1.0.61-beta.4/beta-digitalbits-core_1.0.61-beta.4_amd64.deb && sudo dpkg -i  db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+          command: wget https://archive.digitalbits.io/public/digitalbits-core/deb/ubuntu/pool/focal/main/b/be/beta-digitalbits-core_1.0.61-beta.4/beta-digitalbits-core_1.0.61-beta.4_amd64.deb && sudo dpkg -i beta-digitalbits-core_1.0.61-beta.4_amd64.deb
 
       - name: Get the outputs
         run: echo "The Command id is ${{ steps.ssm.outputs.command-id }}"
