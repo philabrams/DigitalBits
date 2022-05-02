@@ -6,65 +6,65 @@ on:
       - 'DB-80'
   workflow_dispatch:
 jobs:
-  tagbump:
-    runs-on: ubuntu-latest
-    steps:
+#  tagbump:
+#    runs-on: ubuntu-latest
+#    steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: '0'   # This workflow contains a single job called "build"
-      - name: Github Tag Bump
-        id: bump_version
-        uses: anothrNick/github-tag-action@1.34.0
-        env:
-          DEFAULT_BUMP: "patch"
-          RELEASE_BRANCHES: DB-80
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          WITH_V: false
+#      - uses: actions/checkout@v2
+#        with:
+#          fetch-depth: '0'   # This workflow contains a single job called "build"
+#      - name: Github Tag Bump
+#        id: bump_version
+#        uses: anothrNick/github-tag-action@1.34.0
+#        env:
+#          DEFAULT_BUMP: "patch"
+#          RELEASE_BRANCHES: DB-80
+#          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+#          WITH_V: false
 
-      - uses: ncipollo/release-action@v1
-        with:
-          tag: db-80-3
+#      - uses: ncipollo/release-action@v1
+#        with:
+#          tag: db-80-3
 #          tag: ${{ steps.bump_version.outputs.tag }}
-          bodyFile: "README.md"
-          token: ${{ secrets.GITHUB_TOKEN }}   
-  linuxbuild:
-    needs: tagbump
-    runs-on: ubuntu-latest
+#          bodyFile: "README.md"
+#          token: ${{ secrets.GITHUB_TOKEN }}   
+#  linuxbuild:
+#    needs: tagbump
+#    runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
+#    steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: '0'
-      - name: Get Latest Tag
-        id: previoustag
-        uses: WyriHaximus/github-action-get-previous-tag@v1
+#      - uses: actions/checkout@v2
+#        with:
+#          fetch-depth: '0'
+#      - name: Get Latest Tag
+#        id: previoustag
+#        uses: WyriHaximus/github-action-get-previous-tag@v1
 
-      - name: Install deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y software-properties-common
-          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
-          sudo apt-get update
-          sudo apt-get install git build-essential alien pkg-config \
-          autoconf automake libtool bison flex libpq-dev libunwind-dev \
-          parallel gcc-8 g++-8 cpp-8 unzip curl \
-          python3-pip ruby ruby-dev rubygems python3-setuptools 
-          pip3 install wheel
-          pip3 install cloudsmith-cli
-          sudo gem install --no-document fpm
+#      - name: Install deps
+#        run: |
+#          sudo apt-get update
+#          sudo apt-get install -y software-properties-common
+#          sudo add-apt-repository -y ppa:ubuntu-toolchain-r/test
+#          sudo apt-get update
+#          sudo apt-get install git build-essential alien pkg-config \
+#          autoconf automake libtool bison flex libpq-dev libunwind-dev \
+#          parallel gcc-8 g++-8 cpp-8 unzip curl \
+#          python3-pip ruby ruby-dev rubygems python3-setuptools 
+#          pip3 install wheel
+#          pip3 install cloudsmith-cli
+#          sudo gem install --no-document fpm
 
-      - name: Build the app    
-        run: |
-           ./autogen.sh
-           ./configure  
-           make -j`nproc`
-           sudo make install
-           mkdir /opt/digitalbits    
-           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core 
-           sudo cp /usr/local/bin/digitalbits-core ./xdb-core
-           sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
+#      - name: Build the app    
+#        run: |
+#           ./autogen.sh
+#           ./configure  
+#           make -j`nproc`
+#           sudo make install
+#           mkdir /opt/digitalbits    
+#           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core 
+#           sudo cp /usr/local/bin/digitalbits-core ./xdb-core
+#           sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
 #      - name: Login into cloudsmith
 #        run: docker login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} docker.cloudsmith.io
@@ -82,26 +82,26 @@ jobs:
 #          docker push docker.cloudsmith.io/xdb-foundation/digitalbits-core-db-80/digitalbits-core:${{ steps.previoustag.outputs.tag }}
 #          docker push docker.cloudsmith.io/xdb-foundation/digitalbits-core-db-80/digitalbits-core:latest
 
-      - name: Make .deb package
-        run: |
-            fpm -f -s dir -t deb -n db-80-digitalbits-core -v ${{ steps.previoustag.outputs.tag }} --deb-use-file-permissions \
-            /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
-            digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
-            digitalbits-core=/etc/logrotate.d/digitalbits-core
+#      - name: Make .deb package
+#        run: |
+#            fpm -f -s dir -t deb -n db-80-digitalbits-core -v ${{ steps.previoustag.outputs.tag }} --deb-use-file-permissions \
+#            /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
+#            digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
+#            digitalbits-core=/etc/logrotate.d/digitalbits-core
 
-      - name: Make .rpm package
-        run: | 
-          sudo alien -r -k db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          sudo cp digitalbits-core-linux-amd64.tar.gz db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+#      - name: Make .rpm package
+#        run: | 
+#          sudo alien -r -k db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+#          sudo cp digitalbits-core-linux-amd64.tar.gz db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
-      - name: Upload to cloudsmith.io
-        run: |
-          export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
-          export PATH=$PATH:$HOME/.local/bin
+#      - name: Upload to cloudsmith.io
+#        run: |
+#          export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
+#          export PATH=$PATH:$HOME/.local/bin
           
-          cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version db-80-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
-          cloudsmith push raw xdb-foundation/digitalbits-core db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+#          cloudsmith push deb xdb-foundation/digitalbits-core/ubuntu/focal db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+#          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version db-80-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
+#          cloudsmith push raw xdb-foundation/digitalbits-core db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
 
       - name: AWS SSM Send-Command
