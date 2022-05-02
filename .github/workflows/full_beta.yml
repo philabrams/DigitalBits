@@ -28,11 +28,11 @@ jobs:
 #          tag: ${{ steps.bump_version.outputs.tag }}
 #          bodyFile: "README.md"
 #          token: ${{ secrets.GITHUB_TOKEN }}   
-#  linuxbuild:
+  linuxbuild:
 #    needs: tagbump
-#    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest
     # Steps represent a sequence of tasks that will be executed as part of the job
-#    steps:
+    steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
 #      - uses: actions/checkout@v2
 #        with:
