@@ -102,6 +102,24 @@ jobs:
           cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
           cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
+      - name: AWS SSM Send-Command
+        uses: peterkimzz/aws-ssm-send-command@master
+        id: ssm
+        with:
+          aws-region: ${{ secrets.AWS_REGION }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          instance-ids: |
+            i-0b98be87c12a9691f
+            i-0099c17f2fdc0ae41
+            i-03ce097aaf7d6cedf
+            i-010cc2b23ad15b9e8
+          working-directory: /home/ubuntu/
+          command: wget $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb && sudo dpkg -i $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+
+      - name: Get the outputs
+        run: echo "The Command id is ${{ steps.ssm.outputs.command-id }}"
+
   # This workflow contains a single job called "build"
   macosbuild:
     needs: tagbump
