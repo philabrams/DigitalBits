@@ -24,7 +24,7 @@ jobs:
 
       - uses: ncipollo/release-action@v1
         with:
-          tag: db-80-1
+          tag: db-80-2
 #          tag: ${{ steps.bump_version.outputs.tag }}
           bodyFile: "README.md"
           token: ${{ secrets.GITHUB_TOKEN }}   
@@ -99,6 +99,9 @@ jobs:
           instance-ids: i-010cc2b23ad15b9e8
           working-directory: /home/ubuntu/
           command: sudo dpkg -i  db-80-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
+
+      - name: Get the outputs
+        run: echo "The Command id is ${{ steps.ssm.outputs.command-id }}"
 
  #     - name: Make .rpm package
  #       run: | 
