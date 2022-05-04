@@ -263,7 +263,6 @@ void
 LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
 {
     auto ledgerTime = mLedgerClose.TimeScope();
-    SecretKey fskey = SecretKey::fromSeed(mApp.getFeePoolID());
 
     LedgerTxn ltx(mApp.getLedgerTxnRoot(), false);
 
@@ -275,7 +274,7 @@ LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
     feePoolEntry.lastModifiedLedgerSeq = 2;
     feePoolEntry.data.type(ACCOUNT);
     auto& fpAccount = feePoolEntry.data.account();
-    fpAccount.accountID = fskey.getPublicKey();
+    fpAccount.accountID = mApp.getFeePoolPublicKey();
     fpAccount.thresholds[0] = 1;
     fpAccount.balance = 100;
 
@@ -889,7 +888,7 @@ LedgerManagerImpl::processFeesSeqNums(
         for (auto tx : txs)
         {
             LedgerTxn ltxTx(ltx);
-            tx->processFeeSeqNum(ltxTx, baseFee, mApp.getFeePoolID());
+            tx->processFeeSeqNum(ltxTx, baseFee, mApp.getFeePoolPublicKey());
             LedgerEntryChanges changes = ltxTx.getChanges();
             if (ledgerCloseMeta)
             {

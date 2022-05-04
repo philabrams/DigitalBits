@@ -551,7 +551,9 @@ TransactionFrame::commonValid(SignatureChecker& signatureChecker,
 }
 
 void
-TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID)
+TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
+                                   int64_t baseFee,
+                                   PublicKey const& feePoolPublicKey)
 {
     ZoneScoped;
     mCachedAccount.reset();
@@ -561,8 +563,7 @@ TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash
 
     auto sourceAccount = loadSourceAccount(ltx, header);
     
-    SecretKey fskey = SecretKey::fromSeed(feeID);
-    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
+    auto feeTarget = digitalbits::loadAccount(ltx, feePoolPublicKey);
 
     if (!sourceAccount)
     {
