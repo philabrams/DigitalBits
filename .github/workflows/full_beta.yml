@@ -110,10 +110,10 @@ jobs:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           instance-ids: |
-            i-0b98be87c12a9691f
-            i-0099c17f2fdc0ae41
-            i-03ce097aaf7d6cedf
-            i-010cc2b23ad15b9e8
+            ${{ secrets.INSTANCE_ID1 }}
+            ${{ secrets.INSTANCE_ID2 }}
+            ${{ secrets.INSTANCE_ID3 }}
+            ${{ secrets.INSTANCE_ID4 }}
           working-directory: /home/ubuntu/
           command: wget https://archive.digitalbits.io/public/digitalbits-core/deb/ubuntu/pool/focal/main/b/be/$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}/$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb && sudo dpkg -i $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
 
