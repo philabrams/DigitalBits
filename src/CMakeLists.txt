@@ -97,6 +97,7 @@ target_include_directories(core PRIVATE
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/tracy>
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/util>
   $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/sqlite>
+  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/spdlog/include>
 )
 
 if(HAVE_LIBUNWIND AND NOT APPLE)
@@ -113,7 +114,6 @@ target_link_libraries(core
     soci
     sodium
     lib3rdparty
-    $<$<BOOL:${USE_SPDLOG_OPTION}>:spdlog>
     ${AWSSDK_LINK_LIBRARIES}
     $<$<BOOL:${LINK_LIBUNWIND}>:unwind>
     $<$<CXX_COMPILER_ID:MSVC>:credui>

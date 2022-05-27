@@ -20,10 +20,7 @@ if(MSVC)
 endif()
 
 # Configuration options
-# Use either easylogging or spdlog
-option(USE_EASYLOGGING_OPTION "Use easylogging library" ON)
-option(USE_SPDLOG_OPTION "Use spdlog library" OFF)
-
+option(USE_SPDLOG_OPTION "Use spdlog library" ON)
 option(BUILD_TESTS_OPTION "Build unit test files" ON)
 option(USE_POSTGRES_OPTION "Use PostgreSQL for storage" ON)
 option(USE_TRACY_OPTION "Enable profiling" OFF)
@@ -32,12 +29,7 @@ option(USE_TRACY_OPTION "Enable profiling" OFF)
 # CHECK_INCLUDE_FILES(libunwind.h HAVE_LIBUNWIND)
 
 # Define preprocessor macros
-if(USE_EASYLOGGING_OPTION AND (NOT USE_SPDLOG_OPTION))
-    message(STATUS "Using Easylogging++ for logging.")
-    add_compile_definitions(USE_EASYLOGGING)
-endif()
-
-if(USE_SPDLOG_OPTION AND (NOT USE_EASYLOGGING_OPTION))
+if(USE_SPDLOG_OPTION)
     message(STATUS "Using spdlog for logging.")
     add_compile_definitions(USE_SPDLOG)
 endif()

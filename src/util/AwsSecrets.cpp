@@ -10,7 +10,6 @@ namespace digitalbits
 {
 std::string getSecretById(const std::string& secretId)
 {
-    CLOG(INFO, "SecretsManager") << "Testing logging";
     Aws::SecretsManager::SecretsManagerClient sm;
     Aws::SecretsManager::Model::GetSecretValueRequest request;
     Aws::String secretIdAws(secretId.c_str(), secretId.size());
@@ -30,9 +29,12 @@ std::string getSecretById(const std::string& secretId)
     }
     else
     {
+        auto awsErrorMsg = outcome.GetError().GetMessage();
+        std::string errorMsg(awsErrorMsg.c_str(), awsErrorMsg.size());
         auto message = fmt::format("Secret retrieval failed {}, error {}",
-            secretId, outcome.GetError());
-        LOG_INFO(DEFAULT_LOG, message);
+            secretId, errorMsg);
+        LOG_INFO(DEFAULT_LOG, "Secret retrieval failed {}, error {}", secretId,
+            errorMsg);
 
         throw std::runtime_error(message);
     }

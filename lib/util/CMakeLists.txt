@@ -5,7 +5,6 @@ target_sources(lib3rdparty
         getopt_long.c
         siphash.cpp
         uint128_t.cpp
-        $<$<BOOL:${USE_EASYLOGGING_OPTION}>:${CMAKE_SOURCE_DIR}/lib/util/easylogging++.cc>
 
         basen.h
         cbitset.h
@@ -16,5 +15,4 @@ target_sources(lib3rdparty
         getopt.h
         siphash.h
         uint128_t.h
-        $<$<BOOL:${USE_EASYLOGGING_OPTION}>:${CMAKE_SOURCE_DIR}/lib/util/easylogging++.h>
 )

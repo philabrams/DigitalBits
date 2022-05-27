@@ -14,6 +14,9 @@
 
 #if defined(USE_SPDLOG)
 
+// Must include this _before_ spdlog.h
+#include "util/SpdlogTweaks.h"
+
 #include <memory>
 #include <spdlog/spdlog.h>
 
@@ -79,7 +82,7 @@ typedef std::shared_ptr<spdlog::logger> LogPtr;
 
 #else
 // No spdlog either: delegate back to old logging interface, which will
-// in turn either use easylogging or digitalbits::CoutLogger.
+// in turn either use digitalbits::CoutLogger.
 //
 // Note: all this is temporary while evaluating; when we commit to a new logging
 // interface we'll remove all this plumbing.
@@ -110,7 +113,7 @@ typedef std::shared_ptr<spdlog::logger> LogPtr;
 #define LOG_FATAL(logger, f, ...) \
     CLOG(FATAL, logger) << fmt::format(f, ##__VA_ARGS__)
 #define GET_LOG(name) name
-#define DEFAULT_LOG ELPP_CURR_FILE_LOGGER_ID
+#define DEFAULT_LOG nullptr
 namespace digitalbits
 {
 typedef void* LogPtr;
@@ -118,20 +121,16 @@ typedef void* LogPtr;
 
 #endif
 
-#ifndef USE_EASYLOGGING
-
-#define INITIALIZE_EASYLOGGINGPP
-#define CLOG(LEVEL, ...) digitalbits::CoutLogger(el::Level::LEVEL)
+#define CLOG(LEVEL, ...) digitalbits::CoutLogger(LogLevel::LEVEL)
 #define LOG(LEVEL) CLOG(LEVEL)
-#define ELPP_CURR_FILE_LOGGER_ID nullptr
 
-namespace el
+namespace digitalbits
 {
 
-enum class Level
+enum class LogLevel
 {
     FATAL = 0,
-    ERROR = 1,
+    ERR = 1,
     WARNING = 2,
     INFO = 3,
     DEBUG = 4,
@@ -140,17 +139,13 @@ enum class Level
     // Needed for some existing code
     Info = 3
 };
-}
-
-namespace digitalbits
-{
 
 class CoutLogger
 {
     bool const mShouldLog;
 
   public:
-    explicit CoutLogger(el::Level l);
+    explicit CoutLogger(LogLevel l);
 
     ~CoutLogger();
 
@@ -168,14 +163,14 @@ class CoutLogger
 
 class Logging
 {
-    static el::Level mGlobalLogLevel;
-    static std::map<std::string, el::Level> mPartitionLogLevels;
+    static LogLevel mGlobalLogLevel;
+    static std::map<std::string, LogLevel> mPartitionLogLevels;
     static std::recursive_mutex mLogMutex;
     static bool mInitialized;
 #if defined(USE_SPDLOG)
     static bool mColor;
     static std::string mLastPattern;
-    static std::string mLastFilename;
+    static std::string mLastFilenamePattern;
 #define LOG_PARTITION(name) static LogPtr name##LogPtr;
 #include "util/LogPartitions.def"
 #undef LOG_PARTITION
@@ -187,10 +182,10 @@ class Logging
     static void setFmt(std::string const& peerID, bool timestamps = true);
     static void setLoggingToFile(std::string const& filename);
     static void setLoggingColor(bool color);
-    static void setLogLevel(el::Level level, const char* partition);
-    static el::Level getLLfromString(std::string const& levelName);
-    static el::Level getLogLevel(std::string const& partition);
-    static std::string getStringFromLL(el::Level level);
+    static void setLogLevel(LogLevel level, const char* partition);
+    static LogLevel getLLfromString(std::string const& levelName);
+    static LogLevel getLogLevel(std::string const& partition);
+    static std::string getStringFromLL(LogLevel level);
     static bool logDebug(std::string const& partition);
     static bool logTrace(std::string const& partition);
     static void rotate();
@@ -205,51 +200,3 @@ class Logging
 #endif
 };
 }
-
-#else // USE_EASYLOGGING defined
-
-#define ELPP_THREAD_SAFE
-#define ELPP_DISABLE_DEFAULT_CRASH_HANDLING
-#define ELPP_NO_DEFAULT_LOG_FILE
-#define ELPP_NO_CHECK_MACROS
-#define ELPP_NO_DEBUG_MACROS
-#define ELPP_DISABLE_PERFORMANCE_TRACKING
-#define ELPP_WINSOCK2
-#define ELPP_DEBUG_ERRORS
-
-// NOTE: Nothing else should include easylogging directly include this file
-// instead Please think carefully modifying this file, and potentially using
-// synchronization primitives. It is easy to introduce data races and deadlocks,
-// so it is recommended to use valgrind --tool=helgrind to detect potential
-// problems.
-#include "lib/util/easylogging++.h"
-
-namespace digitalbits
-{
-class Logging
-{
-    static el::Level mLogLevel;
-    static el::Configurations gDefaultConf;
-    static bool gAnyDebug;
-    static bool gAnyTrace;
-
-  public:
-    static void init();
-    static void setFmt(std::string const& peerID, bool timestamps = true);
-    static void setLoggingToFile(std::string const& filename);
-    static void setLoggingColor(bool color);
-    static void setLogLevel(el::Level level, const char* partition);
-    static el::Level getLLfromString(std::string const& levelName);
-    static el::Level getLogLevel(std::string const& partition);
-    static std::string getStringFromLL(el::Level);
-    static bool logDebug(std::string const& partition);
-    static bool logTrace(std::string const& partition);
-    static void rotate();
-    // throws if partition name is not recognized
-    static std::string normalizePartition(std::string const& partition);
-
-    static std::array<std::string const, 14> const kPartitionNames;
-};
-}
-
-#endif // USE_EASYLOGGING

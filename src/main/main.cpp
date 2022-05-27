@@ -14,8 +14,6 @@
 #include <sodium/core.h>
 #include <xdrpp/marshal.h>
 
-INITIALIZE_EASYLOGGINGPP
-
 namespace digitalbits
 {
 static void

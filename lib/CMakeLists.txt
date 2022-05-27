@@ -25,10 +25,6 @@ endif()
 
 add_subdirectory(soci)
 
-if(USE_SPDLOG_OPTION)
-    add_subdirectory(spdlog)
-endif()
-
 # autools projects
 add_subdirectory(libsodium)
 add_subdirectory(xdrpp)
@@ -47,6 +43,7 @@ add_subdirectory(util)
 target_sources(lib3rdparty
     PRIVATE
         asio.cpp
+        spdlog.cpp
 )
 
 target_include_directories(lib3rdparty PRIVATE
@@ -55,4 +52,5 @@ target_include_directories(lib3rdparty PRIVATE
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/asio/asio/include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/fmt/include>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/spdlog/include>
 )
