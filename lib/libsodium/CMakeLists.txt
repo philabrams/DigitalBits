@@ -25,7 +25,7 @@ else()
     ExternalProject_Add(libsodium
         PREFIX ${SODIUM_BIN}
         SOURCE_DIR ${SODIUM_DIR}
-        DOWNLOAD_COMMAND cd ${SODIUM_DIR} && ${SODIUM_DIR}/autogen.sh
+        DOWNLOAD_COMMAND cd ${SODIUM_DIR} && ${SODIUM_DIR}/autogen.sh DO_NOT_UPDATE_CONFIG_SCRIPTS=1
         CONFIGURE_COMMAND ${SODIUM_DIR}/configure --srcdir=${SODIUM_DIR} --prefix=${SODIUM_BIN} --enable-static=yes --disable-shared
         BUILD_COMMAND ${MAKE}
         INSTALL_COMMAND make install
