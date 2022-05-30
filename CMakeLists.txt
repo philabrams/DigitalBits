@@ -24,6 +24,7 @@ option(USE_SPDLOG_OPTION "Use spdlog library" ON)
 option(BUILD_TESTS_OPTION "Build unit test files" ON)
 option(USE_POSTGRES_OPTION "Use PostgreSQL for storage" ON)
 option(USE_TRACY_OPTION "Enable profiling" OFF)
+option(ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION "Enable next protocol version, UNSAFE FOR PRODUCTION" OFF)
 
 # Additional platform checks
 # CHECK_INCLUDE_FILES(libunwind.h HAVE_LIBUNWIND)
@@ -59,6 +60,11 @@ if(USE_TRACY_OPTION)
   add_compile_definitions(TRACY_NO_BROADCAST)
   add_compile_definitions(TRACY_ONLY_LOCALHOST)
   add_compile_definitions(TRACY_ONLY_IPV4)
+endif()
+
+if(ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION)
+  message(WARNING "Enabled next protocol version, UNSAFE FOR PRODUCTION")
+  add_compile_definitions(ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION)
 endif()
 
 if(MSVC)
