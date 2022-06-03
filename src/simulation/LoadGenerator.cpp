@@ -639,9 +639,7 @@ LoadGenerator::TxInfo::execute(Application& app, bool isCreate,
     }
     txm.mTxnAttempted.Mark();
 
-    DigitalBitsMessage msg;
-    msg.type(TRANSACTION);
-    msg.transaction() = txf->getEnvelope();
+    DigitalBitsMessage msg(txf->toDigitalBitsMessage());
     txm.mTxnBytes.Mark(xdr::xdr_argpack_size(msg));
 
     auto status = app.getHerder().recvTransaction(txf);

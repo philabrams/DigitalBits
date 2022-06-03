@@ -940,8 +940,7 @@ TransactionFrame::apply(Application& app, AbstractLedgerTxn& ltx,
 DigitalBitsMessage
 TransactionFrame::toDigitalBitsMessage() const
 {
-    DigitalBitsMessage msg;
-    msg.type(TRANSACTION);
+    DigitalBitsMessage msg(TRANSACTION);
     msg.transaction() = mEnvelope;
     return msg;
 }

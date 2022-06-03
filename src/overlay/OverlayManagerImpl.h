@@ -103,7 +103,7 @@ class OverlayManagerImpl : public OverlayManager
     bool recvFloodedMsgID(DigitalBitsMessage const& msg, Peer::pointer peer,
                           Hash& msgID) override;
     void forgetFloodedMsg(Hash const& msgID) override;
-    void broadcastMessage(DigitalBitsMessage const& msg,
+    bool broadcastMessage(DigitalBitsMessage const& msg,
                           bool force = false) override;
     void connectTo(PeerBareAddress const& address) override;
 

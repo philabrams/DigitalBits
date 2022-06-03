@@ -900,12 +900,12 @@ OverlayManagerImpl::forgetFloodedMsg(Hash const& msgID)
     mFloodGate.forgetRecord(msgID);
 }
 
-void
+bool
 OverlayManagerImpl::broadcastMessage(DigitalBitsMessage const& msg, bool force)
 {
     ZoneScoped;
     mOverlayMetrics.mMessagesBroadcast.Mark();
-    mFloodGate.broadcast(msg, force);
+    return mFloodGate.broadcast(msg, force);
 }
 
 void
