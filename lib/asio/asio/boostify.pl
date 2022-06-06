@@ -104,7 +104,10 @@ sub copy_source_file
   $is_test = 1 if ($from =~ /tests\/unit/);
 
   my $is_coroutine_related = 0;
-  $is_coroutine_related = 1 if ($from =~ /await/);
+  $is_coroutine_related = 1 if ($from =~ /await/ || $from =~ /partial_promise/);
+
+  my $is_hash_related = 0;
+  $is_hash_related = 1 if ($from =~ /ip\/address/ || $from =~ /ip\/basic_endpoint/);
 
   # Open the files.
   open(my $input, "<$from") or die("Can't open $from for reading");
@@ -274,7 +277,7 @@ sub copy_source_file
         print_line($output, $1 . "boost::thread" . $2, $from, $lineno);
       }
     }
-    elsif ($line =~ /namespace std \{ *$/ && !$is_coroutine_related)
+    elsif ($line =~ /namespace std \{ *$/ && !$is_coroutine_related && !$is_hash_related)
     {
       print_line($output, "namespace boost {", $from, $lineno);
       print_line($output, "namespace system {", $from, $lineno);
@@ -285,7 +288,7 @@ sub copy_source_file
       $line =~ s/asio::/boost::asio::/g if !$is_xsl;
       print_line($output, $line, $from, $lineno);
     }
-    elsif ($line =~ /^} \/\/ namespace std/ && !$is_coroutine_related)
+    elsif ($line =~ /^} \/\/ namespace std/ && !$is_coroutine_related && !$is_hash_related)
     {
       print_line($output, "} // namespace system", $from, $lineno);
       print_line($output, "} // namespace boost", $from, $lineno);
@@ -317,6 +320,16 @@ sub copy_source_file
     elsif ($line =~ /asio_handler_invoke_helpers/)
     {
       $line =~ s/asio_handler_invoke_helpers/boost_asio_handler_invoke_helpers/g;
+      print_line($output, $line, $from, $lineno);
+    }
+    elsif ($line =~ /asio_(prefer|query|require|require_concept)_fn/)
+    {
+      $line =~ s/asio_(prefer|query|require|require_concept)_fn/boost_asio_$1_fn/g;
+      print_line($output, $line, $from, $lineno);
+    }
+    elsif ($line =~ /asio_execution_/ && !($line =~ /_is_unspecialised/))
+    {
+      $line =~ s/asio_execution_/boost_asio_execution_/g;
       print_line($output, $line, $from, $lineno);
     }
     elsif ($line =~ /[\\@]ref boost_bind/)
@@ -373,6 +386,8 @@ sub copy_include_files
       "include/asio/execution/detail",
       "include/asio/execution/impl",
       "include/asio/experimental",
+      "include/asio/experimental/detail",
+      "include/asio/experimental/detail/impl",
       "include/asio/experimental/impl",
       "include/asio/generic",
       "include/asio/generic/detail",
@@ -399,7 +414,7 @@ sub copy_include_files
   foreach my $dir (@dirs)
   {
     our $boost_dir;
-    my @files = ( glob("$dir/*.hpp"), glob("$dir/*.ipp"), glob("$dir/*cpp") );
+    my @files = ( glob("$dir/*.hpp"), glob("$dir/*.ipp") );
     foreach my $file (@files)
     {
       if ($file ne "include/asio/thread.hpp"
@@ -437,6 +452,8 @@ sub copy_unit_tests
       "src/tests/unit",
       "src/tests/unit/archetypes",
       "src/tests/unit/execution",
+      "src/tests/unit/experimental",
+      "src/tests/unit/experimental/coro",
       "src/tests/unit/generic",
       "src/tests/unit/ip",
       "src/tests/unit/local",
@@ -552,6 +569,7 @@ sub copy_examples
       "src/examples/cpp11/echo",
       "src/examples/cpp11/executors",
       "src/examples/cpp11/fork",
+      "src/examples/cpp11/files",
       "src/examples/cpp11/futures",
       "src/examples/cpp11/handler_tracking",
       "src/examples/cpp11/http/server",
@@ -566,9 +584,13 @@ sub copy_examples
       "src/examples/cpp11/ssl",
       "src/examples/cpp11/timeouts",
       "src/examples/cpp11/timers",
+      "src/examples/cpp14/deferred",
       "src/examples/cpp14/executors",
+      "src/examples/cpp14/iostreams",
       "src/examples/cpp14/operations",
-      "src/examples/cpp17/coroutines_ts");
+      "src/examples/cpp14/parallel_group",
+      "src/examples/cpp17/coroutines_ts",
+      "src/examples/cpp20/channels");
 
   our $boost_dir;
   foreach my $dir (@dirs)
@@ -597,10 +619,12 @@ sub copy_doc
       "src/doc/asio.qbk",
       "src/doc/examples.qbk",
       "src/doc/net_ts.qbk",
+      "src/doc/overview.qbk",
       "src/doc/reference.xsl",
       "src/doc/std_executors.qbk",
       "src/doc/tutorial.xsl",
       glob("src/doc/overview/*.qbk"),
+      glob("src/doc/overview/model/*.qbk"),
       glob("src/doc/requirements/*.qbk"));
   foreach my $file (@files)
   {
