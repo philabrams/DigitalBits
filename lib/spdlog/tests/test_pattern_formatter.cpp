@@ -64,7 +64,7 @@ TEST_CASE("color range test1", "[pattern_formatter]")
     auto formatter = std::make_shared<spdlog::pattern_formatter>("%^%v%$", spdlog::pattern_time_type::local, "\n");
 
     memory_buf_t buf;
-    fmt::format_to(buf, "Hello");
+    fmt::format_to(std::back_inserter(buf), "Hello");
     memory_buf_t formatted;
     std::string logger_name = "test";
     spdlog::details::log_msg msg(logger_name, spdlog::level::info, spdlog::string_view_t(buf.data(), buf.size()));
@@ -372,7 +372,7 @@ TEST_CASE("clone-custom_formatter", "[pattern_formatter]")
 //
 
 #ifdef _WIN32
-static const char *const test_path = "\\a\\b\\myfile.cpp";
+static const char *const test_path = "\\a\\b\\c/myfile.cpp";
 #else
 static const char *const test_path = "/a/b//myfile.cpp";
 #endif

@@ -8,8 +8,6 @@
 #ifndef SOCI_PLATFORM_H_INCLUDED
 #define SOCI_PLATFORM_H_INCLUDED
 
-#include <memory>
-
 #if defined(_MSC_VER) || defined(__MINGW32__)
 #define LL_FMT_FLAGS "I64"
 #else
@@ -57,16 +55,5 @@ namespace std {
 # error "Visual C++ versions prior 1300 don't support _strtoi64 and _strtoui64"
 #endif // _MSC_VER >= 1300
 #endif // _MSC_VER
-
-namespace soci
-{
-
-namespace cxx_details
-{
-    template <typename T>
-    using auto_ptr = std::unique_ptr<T>;
-} // namespace cxx_details
-
-} // namespace soci
 
 #endif // SOCI_PLATFORM_H_INCLUDED

@@ -30,7 +30,7 @@ class query_transformation_function
 {
 public:
     virtual ~query_transformation_function() {}
-    virtual std::string operator()(std::string const &) const = 0;
+    virtual std::string operator()(std::string const& a) const = 0;
 };
 
 template <typename T>

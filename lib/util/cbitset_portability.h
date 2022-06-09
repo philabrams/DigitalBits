@@ -4,26 +4,21 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root of
 // this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 //
-// Subsequent changes copyright 2019 DigitalBits Development Foundation and
+// Subsequent changes copyright 2019 Stellar Development Foundation and
 // contributors. Licensed under the Apache License, Version 2.0. See the COPYING
 // file at the root of this distribution or at
 // http://www.apache.org/licenses/LICENSE-2.0
 
 #include <stdint.h>
 
-#ifdef _MSC_VER
-/* Microsoft C/C++-compatible compiler */
+#if defined(_MSC_VER) && !defined(__clang__)
+/* Microsoft C/C++-compatible compiler, not running with clang frontend */
 #include <intrin.h>
-
-#ifndef __clang__ // if one compiles with MSVC *with* clang, then these
-                  // intrinsics are defined!!!
-// sadly there is no way to check whether we are missing these intrinsics
-// specifically.
 
 /* wrappers for Visual Studio built-ins that look like gcc built-ins */
 /* result might be undefined when input_num is zero */
 static inline int
-__builtin_ctzll(unsigned long long input_num)
+bitset_ctzll(unsigned long long input_num)
 {
     unsigned long index;
 #ifdef _WIN64 // highly recommended!!!
@@ -44,7 +39,7 @@ __builtin_ctzll(unsigned long long input_num)
 
 /* result might be undefined when input_num is zero */
 static inline int
-__builtin_clzll(unsigned long long input_num)
+bitset_clzll(unsigned long long input_num)
 {
     unsigned long index;
 #ifdef _WIN64 // highly recommended!!!
@@ -65,7 +60,7 @@ __builtin_clzll(unsigned long long input_num)
 
 /* result might be undefined when input_num is zero */
 static inline int
-__builtin_clz(int input_num)
+bitset_clz(int input_num)
 {
     unsigned long index;
     _BitScanReverse(&index, input_num);
@@ -74,7 +69,7 @@ __builtin_clz(int input_num)
 
 /* result might be undefined when input_num is zero */
 static inline int
-__builtin_popcountll(unsigned long long input_num)
+bitset_popcountll(unsigned long long input_num)
 {
 #ifdef _WIN64 // highly recommended!!!
     return (int)__popcnt64(input_num);
@@ -85,9 +80,14 @@ __builtin_popcountll(unsigned long long input_num)
 }
 
 static inline void
-__builtin_unreachable()
+bitset_unreachable()
 {
     __assume(0);
 }
-#endif
+#else
+#define bitset_clz __builtin_clz
+#define bitset_clzll __builtin_clzll
+#define bitset_ctzll __builtin_ctzll
+#define bitset_popcountll __builtin_popcountll
+#define bitset_unreachable __builtin_unreachable
 #endif

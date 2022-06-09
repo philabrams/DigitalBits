@@ -7,7 +7,6 @@
 #include "function.hpp"
 #include "generator.hpp"
 #include "value.hpp"
-#include "apply.hpp"
 
 namespace autocheck {
 
@@ -49,9 +48,9 @@ namespace autocheck {
           /* Size starts at 0 and grows moderately. */
           candidate = generate<result_type>(gens, resize_f((num_discards + count) >> 1));
           if (prep_f) {
-            autocheck::apply(prep_f, candidate.ref());
+            apply(prep_f, candidate.ref());
           }
-          if (discard_f && autocheck::apply(discard_f, candidate.cref())) {
+          if (discard_f && apply(discard_f, candidate.cref())) {
             ++num_discards;
           } else {
             ++count;

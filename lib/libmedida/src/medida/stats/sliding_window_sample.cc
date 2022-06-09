@@ -1,4 +1,4 @@
-// Copyright 2020 DigitalBits Development Foundation and contributors. Licensed
+// Copyright 2020 Stellar Development Foundation and contributors. Licensed
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
@@ -27,7 +27,7 @@ class SlidingWindowSample::Impl
     std::uint64_t size();
     void Update(std::int64_t value);
     void Update(std::int64_t value, Clock::time_point timestamp);
-    Snapshot MakeSnapshot();
+    Snapshot MakeSnapshot(uint64_t divisor);
 
   private:
     std::mutex mutex_;
@@ -81,9 +81,9 @@ SlidingWindowSample::Update(std::int64_t value, Clock::time_point timestamp)
 }
 
 Snapshot
-SlidingWindowSample::MakeSnapshot() const
+SlidingWindowSample::MakeSnapshot(uint64_t divisor) const
 {
-    return impl_->MakeSnapshot();
+    return impl_->MakeSnapshot(divisor);
 }
 
 // === Implementation ===
@@ -228,7 +228,7 @@ SlidingWindowSample::Impl::Update(std::int64_t value,
 }
 
 Snapshot
-SlidingWindowSample::Impl::MakeSnapshot()
+SlidingWindowSample::Impl::MakeSnapshot(uint64_t divisor)
 {
     std::lock_guard<std::mutex> lock{mutex_};
     std::vector<double> vals;
@@ -237,7 +237,7 @@ SlidingWindowSample::Impl::MakeSnapshot()
     {
         vals.emplace_back(v.first);
     }
-    return {vals};
+    return {vals, divisor};
 }
 
 } // namespace stats

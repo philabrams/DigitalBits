@@ -22,6 +22,8 @@ namespace reporting {
 class JsonReporter::Impl {
  public:
   Impl(JsonReporter& self, MetricsRegistry &registry);
+  Impl(JsonReporter& self, std::map<MetricName, std::shared_ptr<MetricInterface>> const& metrics);
+
   ~Impl();
   void Process(Counter& counter);
   void Process(Meter& meter);
@@ -31,15 +33,20 @@ class JsonReporter::Impl {
   std::string Report();
  private:
   JsonReporter& self_;
-  medida::MetricsRegistry& registry_;
+  std::map<MetricName, std::shared_ptr<MetricInterface>> metrics_;
   mutable std::mutex mutex_;
   std::stringstream out_;
   std::string uname_;
+  void setName();
 };
 
 
 JsonReporter::JsonReporter(MetricsRegistry &registry)
     : impl_ {new JsonReporter::Impl {*this, registry}} {
+}
+
+JsonReporter::JsonReporter(std::map<MetricName, std::shared_ptr<MetricInterface>> const& metricsToReport): impl_ {new JsonReporter::Impl {*this, metricsToReport}}
+{
 }
 
 
@@ -80,10 +87,9 @@ JsonReporter::Process(Buckets& buckets)
 
 // === Implementation ===
 
-
-JsonReporter::Impl::Impl(JsonReporter& self, MetricsRegistry &registry)
-    : self_     (self),
-      registry_ (registry) {
+void
+JsonReporter::Impl::setName()
+{
 #ifdef _WIN32
 	char nameBuf[128];
 	if (gethostname(nameBuf, sizeof(nameBuf)) == 0)
@@ -98,6 +104,18 @@ JsonReporter::Impl::Impl(JsonReporter& self, MetricsRegistry &registry)
   utsname name;
   uname_ = {uname(&name) ? "localhost" : name.nodename};
 #endif
+}
+
+JsonReporter::Impl::Impl(JsonReporter& self, MetricsRegistry &registry)
+    : self_     (self),
+      metrics_ (registry.GetAllMetrics()) {
+  setName();
+}
+
+JsonReporter::Impl::Impl(JsonReporter& self, std::map<MetricName, std::shared_ptr<MetricInterface>> const& metrics)
+    : self_     (self),
+      metrics_ (metrics) {
+  setName();
 }
 
 
@@ -128,7 +146,7 @@ std::string JsonReporter::Impl::Report() {
        << "\"uname\":\"" << uname_ << "\"," << std::endl
        << "\"metrics\":{" << std::endl;
   auto first = true;
-  for (auto& kv : registry_.GetAllMetrics()) {
+  for (auto& kv : metrics_) {
     auto name = kv.first;
     auto metric = kv.second;
     if (first) {
@@ -184,7 +202,8 @@ void JsonReporter::Impl::Process(Histogram& histogram) {
        << "\"95%\":" << snapshot.get95thPercentile() << "," << std::endl
        << "\"98%\":" << snapshot.get98thPercentile() << "," << std::endl
        << "\"99%\":" << snapshot.get99thPercentile() << "," << std::endl
-       << "\"99.9%\":" << snapshot.get999thPercentile() << std::endl;
+       << "\"99.9%\":" << snapshot.get999thPercentile() << "," << std::endl
+       << "\"100%\":" << snapshot.max() << std::endl;
 }
 
 
@@ -211,7 +230,8 @@ void JsonReporter::Impl::Process(Timer& timer) {
        << "\"95%\":" << snapshot.get95thPercentile() << "," << std::endl
        << "\"98%\":" << snapshot.get98thPercentile() << "," << std::endl
        << "\"99%\":" << snapshot.get99thPercentile() << "," << std::endl
-       << "\"99.9%\":" << snapshot.get999thPercentile() << std::endl;
+       << "\"99.9%\":" << snapshot.get999thPercentile() << "," << std::endl
+       << "\"100%\":" << snapshot.max() << std::endl;
 }
 
 void

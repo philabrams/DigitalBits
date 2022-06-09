@@ -11,7 +11,12 @@
 #include "spdlog/sinks/daily_file_sink.h"
 #include "spdlog/sinks/null_sink.h"
 #include "spdlog/sinks/rotating_file_sink.h"
-#include "spdlog/fmt/bundled/locale.h"
+
+#ifdef SPDLOG_FMT_EXTERNAL
+#    include <fmt/locale.h>
+#else
+#    include "spdlog/fmt/bundled/format.h"
+#endif
 
 #include "utils.h"
 #include <atomic>
@@ -123,7 +128,7 @@ int main(int argc, char *argv[])
 
         if (threads > max_threads)
         {
-            throw std::runtime_error(fmt::format("Number of threads exceeds maximum({}})", max_threads));
+            throw std::runtime_error(fmt::format("Number of threads exceeds maximum({})", max_threads));
         }
 
         bench_single_threaded(iters);

@@ -10,7 +10,7 @@
 #include "is_one_of.hpp"
 #include "function.hpp"
 #include "generator_combinators.hpp"
-#include "apply.hpp"
+#include "lib/util/stdrandom.h"
 
 namespace autocheck {
 
@@ -21,16 +21,24 @@ namespace autocheck {
     return rng;
   }
 
+  namespace detail {
+    template <int N, int... Is>
+    struct range : range<N - 1, N - 1, Is...> {};
+
+    template <int... Is>
+    struct range<0, Is...> {};
+  }
+
   template <typename T, typename... Gens, int... Is>
   T generate(std::tuple<Gens...>& gens, size_t size,
-      const range<0, Is...>&)
+      const detail::range<0, Is...>&)
   {
     return T(std::get<Is>(gens)(size)...);
   }
 
   template <typename T, typename... Gens>
   T generate(std::tuple<Gens...>& gens, size_t size) {
-    return generate<T>(gens, size, range<sizeof...(Gens)>());
+    return generate<T>(gens, size, detail::range<sizeof...(Gens)>());
   }
 
   /* Generators produce an infinite sequence. */
@@ -77,10 +85,10 @@ namespace autocheck {
         } else if (Category == ccPrintable || size < detail::nprint) {
           size = detail::nprint - 1;
         } else {
-          size = std::numeric_limits<CharType>::max();
+          size = stellar::numeric_limits<CharType>::max();
         }
         /* Distribution is non-static. */
-        std::uniform_int_distribution<size_t> dist(0, size);
+        stellar::uniform_int_distribution<size_t> dist(0, size);
         auto i = dist(rng());
         auto rv =
           (size < detail::nalnums) ? detail::alnums[i] :
@@ -118,7 +126,7 @@ namespace autocheck {
 
       result_type operator() (size_t size = 0) {
         /* Distribution is non-static. */
-        std::uniform_int_distribution<UnsignedIntegral> dist(0, static_cast<UnsignedIntegral>(size));
+        stellar::uniform_int_distribution<UnsignedIntegral> dist(0, static_cast<UnsignedIntegral>(size));
         auto rv = dist(rng());
         return rv;
       }
@@ -138,7 +146,7 @@ namespace autocheck {
       result_type operator() (size_t size = 0) {
         auto s = static_cast<SignedIntegral>(size >> 1);
         /* Distribution is non-static. */
-        std::uniform_int_distribution<SignedIntegral> dist(-s, s);
+        stellar::uniform_int_distribution<SignedIntegral> dist(-s, s);
         auto rv = dist(rng());
         return rv;
       }
