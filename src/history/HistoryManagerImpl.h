@@ -75,7 +75,7 @@ class HistoryManagerImpl : public HistoryManager
                           std::vector<std::string> const& originalBuckets,
                           bool success) override;
 
-    InferredQuorum inferQuorum(uint32_t ledgerNum) override;
+    void deleteCheckpointsNewerThan(uint32_t ledgerSeq) override;
 
     std::string const& getTmpDir() override;
 

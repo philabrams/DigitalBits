@@ -7,7 +7,6 @@
 #include "crypto/SHA.h"
 #include "crypto/SignerKey.h"
 #include "crypto/SignerKeyUtils.h"
-#include "crypto/SecretKey.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
@@ -17,6 +16,8 @@
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"
 #include "util/GlobalChecks.h"
+#include "util/ProtocolVersion.h"
+#include "util/numeric128.h"
 #include "xdrpp/marshal.h"
 
 #include <numeric>
@@ -180,7 +181,8 @@ FeeBumpTransactionFrame::commonValidPreSeqNum(AbstractLedgerTxn& ltx)
     //    (stay true regardless of other side effects)
 
     auto header = ltx.loadHeader();
-    if (header.current().ledgerVersion < 13)
+    if (protocolVersionIsBefore(header.current().ledgerVersion,
+                                ProtocolVersion::V_13))
     {
         getResult().result.code(txNOT_SUPPORTED);
         return false;
@@ -193,12 +195,12 @@ FeeBumpTransactionFrame::commonValidPreSeqNum(AbstractLedgerTxn& ltx)
     }
 
     auto const& lh = header.current();
-    auto v1 = bigMultiply(getFeeBid(), mInnerTx->getMinFee(lh));
-    auto v2 = bigMultiply(mInnerTx->getFeeBid(), getMinFee(lh));
+    uint128_t v1 = bigMultiply(getFeeBid(), mInnerTx->getMinFee(lh));
+    uint128_t v2 = bigMultiply(mInnerTx->getFeeBid(), getMinFee(lh));
     if (v1 < v2)
     {
-        if (!bigDivide(getResult().feeCharged, v2, mInnerTx->getMinFee(lh),
-                       Rounding::ROUND_UP))
+        if (!bigDivide128(getResult().feeCharged, v2, mInnerTx->getMinFee(lh),
+                          Rounding::ROUND_UP))
         {
             getResult().feeCharged = INT64_MAX;
         }
@@ -320,6 +322,12 @@ FeeBumpTransactionFrame::getNumOperations() const
     return mInnerTx->getNumOperations() + 1;
 }
 
+std::vector<Operation> const&
+FeeBumpTransactionFrame::getRawOperations() const
+{
+    return mInnerTx->getRawOperations();
+}
+
 TransactionResult&
 FeeBumpTransactionFrame::getResult()
 {
@@ -367,26 +375,16 @@ FeeBumpTransactionFrame::insertKeysForTxApply(
 
 void
 FeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
-                                          int64_t baseFee, Hash const& feeID)
+                                          int64_t baseFee)
 {
     resetResults(ltx.loadHeader().current(), baseFee, true);
 
     auto feeSource = digitalbits::loadAccount(ltx, getFeeSourceID());
-    
-    SecretKey fskey = SecretKey::fromSeed(feeID);
-    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
-
     if (!feeSource)
     {
         throw std::runtime_error("Unexpected database state");
     }
-    if (!feeTarget)
-    {
-        throw std::runtime_error("Unexpected database state (fees account is missing)");
-    }
-
     auto& acc = feeSource.current().data.account();
-    auto& fpAcc = feeTarget.current().data.account();
 
     auto header = ltx.loadHeader();
     int64_t& fee = getResult().feeCharged;
@@ -397,9 +395,6 @@ FeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
         // are respected. In this case, we allow it to fall below that since it
         // will be caught later in commonValid.
         digitalbits::addBalance(acc.balance, -fee);
-        
-        // send fees to the Foundation's account instead of feePool.
-        digitalbits::addBalance(fpAcc.balance, fee);
         header.current().feePool += fee;
     }
 }
@@ -440,8 +435,7 @@ FeeBumpTransactionFrame::resetResults(LedgerHeader const& header,
 DigitalBitsMessage
 FeeBumpTransactionFrame::toDigitalBitsMessage() const
 {
-    DigitalBitsMessage msg;
-    msg.type(TRANSACTION);
+    DigitalBitsMessage msg(TRANSACTION);
     msg.transaction() = mEnvelope;
     return msg;
 }

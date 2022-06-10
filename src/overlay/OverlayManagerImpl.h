@@ -58,7 +58,7 @@ class OverlayManagerImpl : public OverlayManager
 
         OverlayManagerImpl& mOverlayManager;
         std::string mDirectionString;
-        int mMaxAuthenticatedCount;
+        size_t mMaxAuthenticatedCount;
 
         std::vector<Peer::pointer> mPending;
         std::map<NodeID, Peer::pointer> mAuthenticated;
@@ -103,7 +103,7 @@ class OverlayManagerImpl : public OverlayManager
     bool recvFloodedMsgID(DigitalBitsMessage const& msg, Peer::pointer peer,
                           Hash& msgID) override;
     void forgetFloodedMsg(Hash const& msgID) override;
-    void broadcastMessage(DigitalBitsMessage const& msg,
+    bool broadcastMessage(DigitalBitsMessage const& msg,
                           bool force = false) override;
     void connectTo(PeerBareAddress const& address) override;
 
@@ -115,6 +115,7 @@ class OverlayManagerImpl : public OverlayManager
 
     bool acceptAuthenticatedPeer(Peer::pointer peer) override;
     bool isPreferred(Peer* peer) const override;
+    bool isFloodMessage(DigitalBitsMessage const& msg) override;
     std::vector<Peer::pointer> const& getInboundPendingPeers() const override;
     std::vector<Peer::pointer> const& getOutboundPendingPeers() const override;
     std::vector<Peer::pointer> getPendingPeers() const override;
@@ -125,6 +126,7 @@ class OverlayManagerImpl : public OverlayManager
     getOutboundAuthenticatedPeers() const override;
     std::map<NodeID, Peer::pointer> getAuthenticatedPeers() const override;
     int getAuthenticatedPeersCount() const override;
+    int64_t getFlowControlPercentage() const override;
 
     // returns nullptr if the passed peer isn't found
     Peer::pointer getConnectedPeer(PeerBareAddress const& address) override;
@@ -158,13 +160,16 @@ class OverlayManagerImpl : public OverlayManager
     {
         std::vector<PeerBareAddress> known;
         std::vector<PeerBareAddress> preferred;
+        bool errors;
     };
 
     std::map<PeerType, std::unique_ptr<RandomPeerSource>> mPeerSources;
     std::future<ResolvedPeers> mResolvedPeers;
+    bool mResolvingPeersWithBackoff;
+    int mResolvingPeersRetryCount;
 
     void triggerPeerResolution();
-    std::vector<PeerBareAddress>
+    std::pair<std::vector<PeerBareAddress>, bool>
     resolvePeers(std::vector<std::string> const& peers);
     void storePeerList(std::vector<PeerBareAddress> const& addresses,
                        bool setPreferred, bool startup);

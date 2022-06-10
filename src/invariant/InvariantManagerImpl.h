@@ -41,14 +41,20 @@ class InvariantManagerImpl : public InvariantManager
                                        OperationResult const& opres,
                                        LedgerTxnDelta const& ltxDelta) override;
 
-    virtual void checkOnBucketApply(std::shared_ptr<Bucket const> bucket,
-                                    uint32_t ledger, uint32_t level,
-                                    bool isCurr) override;
+    virtual void checkOnBucketApply(
+        std::shared_ptr<Bucket const> bucket, uint32_t ledger, uint32_t level,
+        bool isCurr,
+        std::function<bool(LedgerEntryType)> entryTypeFilter) override;
 
     virtual void
     registerInvariant(std::shared_ptr<Invariant> invariant) override;
 
     virtual void enableInvariant(std::string const& name) override;
+
+#ifdef BUILD_TESTS
+    void snapshotForFuzzer() override;
+    void resetForFuzzer() override;
+#endif // BUILD_TESTS
 
   private:
     void onInvariantFailure(std::shared_ptr<Invariant> invariant,

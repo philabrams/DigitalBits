@@ -64,9 +64,9 @@ class OverlayManager
     // This is called by Herder when ledger `lclSeq` closes.
     virtual void clearLedgersBelow(uint32_t ledgerSeq, uint32_t lclSeq) = 0;
 
-    // Send a given message to all peers, via the FloodGate. This is called by
-    // Herder.
-    virtual void broadcastMessage(DigitalBitsMessage const& msg,
+    // Send a given message to all peers, via the FloodGate.
+    // returns true if message was sent to at least one peer
+    virtual bool broadcastMessage(DigitalBitsMessage const& msg,
                                   bool force = false) = 0;
 
     // Make a note in the FloodGate that a given peer has provided us with a
@@ -126,6 +126,8 @@ class OverlayManager
 
     virtual bool isPreferred(Peer* peer) const = 0;
 
+    virtual bool isFloodMessage(DigitalBitsMessage const& msg) = 0;
+
     // Return the current in-memory set of inbound pending peers.
     virtual std::vector<Peer::pointer> const&
     getInboundPendingPeers() const = 0;
@@ -153,6 +155,9 @@ class OverlayManager
 
     // Return number of authenticated peers
     virtual int getAuthenticatedPeersCount() const = 0;
+
+    // Return the number of flow-contolled peers
+    virtual int64_t getFlowControlPercentage() const = 0;
 
     // Attempt to connect to a peer identified by peer address.
     virtual void connectTo(PeerBareAddress const& address) = 0;

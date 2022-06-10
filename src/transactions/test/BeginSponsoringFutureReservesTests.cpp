@@ -36,7 +36,6 @@ TEST_CASE("sponsor future reserves", "[tx][sponsorship]")
 {
     VirtualClock clock;
     auto app = createTestApplication(clock, getTestConfig());
-    app->start();
 
     auto root = TestAccount::createRoot(*app);
     int64_t minBalance = app->getLedgerManager().getLastMinBalance(0);
@@ -197,7 +196,7 @@ TEST_CASE("sponsor future reserves", "[tx][sponsorship]")
         auto signer = makeSigner(getAccount("S1"), 1);
 
         // creating the sponsored trustline first will make sure the account is
-        // usign a V2 extension before the first signer is added
+        // using a V2 extension before the first signer is added
         auto tx1 =
             transactionFrameFromOps(app->getNetworkID(), root,
                                     {root.op(beginSponsoringFutureReserves(a1)),

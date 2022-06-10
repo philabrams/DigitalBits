@@ -15,7 +15,7 @@ namespace digitalbits
 // once). ConditionalWork makes its own lifecycle transitions and may call
 // ConditionFn repeatedly; ConditionFn should not make any assumptions about the
 // number of times or order in which it's called.
-using ConditionFn = std::function<bool()>;
+using ConditionFn = std::function<bool(Application&)>;
 
 // A `ConditionalWork` is a work _gated_ on some arbitrary (and monotonic: see
 // above) `ConditionFn`. It will remain in `WORK_WAITING` state polling the
@@ -59,7 +59,6 @@ class ConditionalWork : public BasicWork
     ConditionFn mCondition;
     std::shared_ptr<BasicWork> mConditionedWork;
     std::chrono::milliseconds const mSleepDelay;
-    std::unique_ptr<VirtualTimer> mSleepTimer;
     bool mWorkStarted{false};
 
   public:

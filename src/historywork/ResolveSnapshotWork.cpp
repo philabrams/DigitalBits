@@ -6,6 +6,7 @@
 #include "history/StateSnapshot.h"
 #include "ledger/LedgerManager.h"
 #include "main/Application.h"
+#include "util/GlobalChecks.h"
 #include <Tracy.hpp>
 
 namespace digitalbits
@@ -15,7 +16,6 @@ ResolveSnapshotWork::ResolveSnapshotWork(
     Application& app, std::shared_ptr<StateSnapshot> snapshot)
     : BasicWork(app, "prepare-snapshot", BasicWork::RETRY_NEVER)
     , mSnapshot(snapshot)
-    , mTimer(std::make_unique<VirtualTimer>(app.getClock()))
 {
     if (!mSnapshot)
     {
@@ -27,34 +27,18 @@ BasicWork::State
 ResolveSnapshotWork::onRun()
 {
     ZoneScoped;
-    if (mEc)
-    {
-        return State::WORK_FAILURE;
-    }
-
     mSnapshot->mLocalState.prepareForPublish(mApp);
     mSnapshot->mLocalState.resolveAnyReadyFutures();
     if ((mApp.getLedgerManager().getLastClosedLedgerNum() >
          mSnapshot->mLocalState.currentLedger) &&
         mSnapshot->mLocalState.futuresAllResolved())
     {
-        assert(mSnapshot->mLocalState.containsValidBuckets(mApp));
+        releaseAssert(mSnapshot->mLocalState.containsValidBuckets(mApp));
         return State::WORK_SUCCESS;
     }
     else
     {
-        std::weak_ptr<ResolveSnapshotWork> weak(
-            std::static_pointer_cast<ResolveSnapshotWork>(shared_from_this()));
-        auto handler = [weak](asio::error_code const& ec) {
-            auto self = weak.lock();
-            if (self)
-            {
-                self->mEc = ec;
-                self->wakeUp();
-            }
-        };
-        mTimer->expires_from_now(std::chrono::seconds(1));
-        mTimer->async_wait(handler);
+        setupWaitingCallback(std::chrono::seconds(1));
         return State::WORK_WAITING;
     }
 }

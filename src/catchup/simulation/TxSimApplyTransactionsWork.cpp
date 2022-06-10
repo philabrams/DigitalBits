@@ -13,10 +13,12 @@
 #include "ledger/LedgerRange.h"
 #include "ledger/LedgerTxn.h"
 #include "src/transactions/simulation/TxSimUtils.h"
+#include "transactions/FeeBumpTransactionFrame.h"
 #include "transactions/SignatureUtils.h"
 #include "transactions/TransactionBridge.h"
 #include "transactions/TransactionSQL.h"
 #include "transactions/TransactionUtils.h"
+#include "util/HashOfHash.h"
 #include "util/XDRCereal.h"
 #include <fmt/format.h>
 
@@ -49,8 +51,8 @@ TxSimApplyTransactionsWork::TxSimApplyTransactionsWork(
     }
 
     auto const& lcl = mApp.getLedgerManager().getLastClosedLedgerHeader();
-    if (mUpgradeProtocol &&
-        lcl.header.ledgerVersion + 1 != Config::CURRENT_LEDGER_PROTOCOL_VERSION)
+    if (mUpgradeProtocol && lcl.header.ledgerVersion + 1 !=
+                                mApp.getConfig().LEDGER_PROTOCOL_VERSION)
     {
         throw std::runtime_error("Invalid ledger version: can only force "
                                  "upgrade for consecutive versions");
@@ -66,9 +68,9 @@ checkOperationResults(xdr::xvector<OperationResult> const& expected,
     {
         if (expected[i].code() != actual[i].code())
         {
-            CLOG_ERROR(History, "Expected operation result {} but got {}",
-                       xdr_to_string(expected[i].code()),
-                       xdr_to_string(actual[i].code()));
+            CLOG_ERROR(History, "Expected {} but got {}",
+                       xdr_to_string(expected[i].code(), "OperationResultCode"),
+                       xdr_to_string(actual[i].code(), "OperationResultCode"));
             continue;
         }
 
@@ -148,16 +150,59 @@ checkOperationResults(xdr::xvector<OperationResult> const& expected,
             match = check(actualOpRes.bumpSeqResult().code(),
                           expectedOpRes.bumpSeqResult().code());
             break;
+        case CREATE_CLAIMABLE_BALANCE:
+            match = check(actualOpRes.createClaimableBalanceResult().code(),
+                          expectedOpRes.createClaimableBalanceResult().code());
+            break;
+        case CLAIM_CLAIMABLE_BALANCE:
+            match = check(actualOpRes.claimClaimableBalanceResult().code(),
+                          expectedOpRes.claimClaimableBalanceResult().code());
+            break;
+        case BEGIN_SPONSORING_FUTURE_RESERVES:
+            match = check(
+                actualOpRes.beginSponsoringFutureReservesResult().code(),
+                expectedOpRes.beginSponsoringFutureReservesResult().code());
+            break;
+        case END_SPONSORING_FUTURE_RESERVES:
+            match =
+                check(actualOpRes.endSponsoringFutureReservesResult().code(),
+                      expectedOpRes.endSponsoringFutureReservesResult().code());
+            break;
+        case REVOKE_SPONSORSHIP:
+            match = check(actualOpRes.revokeSponsorshipResult().code(),
+                          expectedOpRes.revokeSponsorshipResult().code());
+            break;
+        case CLAWBACK:
+            match = check(actualOpRes.clawbackResult().code(),
+                          expectedOpRes.clawbackResult().code());
+            break;
+        case CLAWBACK_CLAIMABLE_BALANCE:
+            match =
+                check(actualOpRes.clawbackClaimableBalanceResult().code(),
+                      expectedOpRes.clawbackClaimableBalanceResult().code());
+            break;
+        case SET_TRUST_LINE_FLAGS:
+            match = check(actualOpRes.setTrustLineFlagsResult().code(),
+                          expectedOpRes.setTrustLineFlagsResult().code());
+            break;
+        case LIQUIDITY_POOL_DEPOSIT:
+            match = check(actualOpRes.liquidityPoolDepositResult().code(),
+                          expectedOpRes.liquidityPoolDepositResult().code());
+            break;
+        case LIQUIDITY_POOL_WITHDRAW:
+            match = check(actualOpRes.liquidityPoolWithdrawResult().code(),
+                          expectedOpRes.liquidityPoolWithdrawResult().code());
+            break;
         default:
             throw std::runtime_error("Unknown operation type");
         }
 
         if (!match)
         {
-            CLOG_ERROR(History, "Expected operation result: {}",
-                       xdr_to_string(expectedOpRes));
-            CLOG_ERROR(History, "Actual operation result: {}",
-                       xdr_to_string(actualOpRes));
+            CLOG_ERROR(History, "Expected {}",
+                       xdr_to_string(expectedOpRes, "OperationResult"));
+            CLOG_ERROR(History, "Actual {}",
+                       xdr_to_string(actualOpRes, "OperationResult"));
         }
     }
 }
@@ -179,9 +224,9 @@ checkResults(Application& app, uint32_t ledger,
         if (dbRes.code() != archiveRes.code())
         {
             CLOG_ERROR(
-                History,
-                "Expected result code {} does not agree with {} for tx {}",
-                xdr_to_string(archiveRes.code()), xdr_to_string(dbRes.code()),
+                History, "Expected {} does not agree with {} for tx {}",
+                xdr_to_string(archiveRes.code(), "TransactionResultCode"),
+                xdr_to_string(dbRes.code(), "TransactionResultCode"),
                 binToHex(results[i].transactionHash));
         }
         else if (dbRes.code() == txFEE_BUMP_INNER_FAILED ||
@@ -193,11 +238,13 @@ checkResults(Application& app, uint32_t ledger,
             {
                 CLOG_ERROR(
                     History,
-                    "Expected result code {} does not agree with {} for "
+                    "Expected {} does not agree with {} for "
                     "fee-bump inner tx {}",
                     xdr_to_string(
-                        archiveRes.innerResultPair().result.result.code()),
-                    xdr_to_string(dbRes.innerResultPair().result.result.code()),
+                        archiveRes.innerResultPair().result.result.code(),
+                        "TransactionResultCode"),
+                    xdr_to_string(dbRes.innerResultPair().result.result.code(),
+                                  "TransactionResultCode"),
                     binToHex(archiveRes.innerResultPair().transactionHash));
             }
             else if (dbRes.innerResultPair().result.result.code() == txFAILED ||
@@ -230,10 +277,9 @@ hasSig(PublicKey const& account,
 void
 TxSimApplyTransactionsWork::addSignerKeys(
     AccountID const& acc, AbstractLedgerTxn& ltx, std::set<SecretKey>& keys,
-    xdr::xvector<DecoratedSignature, 20> const& sigs, uint32_t partition)
+    xdr::xvector<DecoratedSignature, 20> const& sigs, Hash const& txHash,
+    uint32_t partition)
 {
-    auto const& txHash = mResultIter->transactionHash;
-
     if (hasSig(acc, sigs, txHash))
     {
         keys.emplace(generateScaledSecret(acc, partition));
@@ -258,12 +304,24 @@ TxSimApplyTransactionsWork::addSignerKeys(
     }
 }
 
+Hash const&
+TxSimApplyTransactionsWork::getInnerTxHash()
+{
+    bool isFeeBump =
+        mResultIter->result.result.code() == txFEE_BUMP_INNER_SUCCESS ||
+        mResultIter->result.result.code() == txFEE_BUMP_INNER_FAILED;
+    return isFeeBump
+               ? mResultIter->result.result.innerResultPair().transactionHash
+               : mResultIter->transactionHash;
+}
+
 void
 TxSimApplyTransactionsWork::addSignerKeys(
     MuxedAccount const& acc, AbstractLedgerTxn& ltx, std::set<SecretKey>& keys,
-    xdr::xvector<DecoratedSignature, 20> const& sigs, uint32_t partition)
+    xdr::xvector<DecoratedSignature, 20> const& sigs, Hash const& txHash,
+    uint32_t partition)
 {
-    addSignerKeys(toAccountID(acc), ltx, keys, sigs, partition);
+    addSignerKeys(toAccountID(acc), ltx, keys, sigs, txHash, partition);
 }
 
 void
@@ -274,7 +332,7 @@ TxSimApplyTransactionsWork::mutateTxSourceAccounts(TransactionEnvelope& env,
 {
     auto const& sigs = txbridge::getSignaturesInner(env);
     auto addSignerAndReplaceID = [&](MuxedAccount& acc) {
-        addSignerKeys(acc, ltx, keys, sigs, partition);
+        addSignerKeys(acc, ltx, keys, sigs, getInnerTxHash(), partition);
         mutateScaledAccountID(acc, partition);
     };
 
@@ -286,7 +344,7 @@ TxSimApplyTransactionsWork::mutateTxSourceAccounts(TransactionEnvelope& env,
         // Wrap raw Ed25519 key in an AccountID
         acc.type(PUBLIC_KEY_TYPE_ED25519);
         acc.ed25519() = env.v0().tx.sourceAccountEd25519;
-        addSignerKeys(acc, ltx, keys, sigs, partition);
+        addSignerKeys(acc, ltx, keys, sigs, getInnerTxHash(), partition);
         env.v0().tx.sourceAccountEd25519 =
             generateScaledSecret(acc, partition).getPublicKey().ed25519();
         break;
@@ -310,6 +368,10 @@ TxSimApplyTransactionsWork::mutateOperations(TransactionEnvelope& env,
                                              std::set<SecretKey>& keys,
                                              uint32_t partition)
 {
+    // Maps PoolID from ChangeTrustOp to the LiquidityPoolParameters so we can
+    // scale poolIds for pools created and deposited into in the same ledger
+    UnorderedMap<PoolID, LiquidityPoolParameters> ctPoolIdToParam;
+
     auto& ops = txbridge::getOperations(env);
     auto const& sigs = txbridge::getSignaturesInner(env);
 
@@ -318,9 +380,10 @@ TxSimApplyTransactionsWork::mutateOperations(TransactionEnvelope& env,
         // Add signer keys where needed before simulating the operation
         if (op.sourceAccount)
         {
-            addSignerKeys(*op.sourceAccount, ltx, keys, sigs, partition);
+            addSignerKeys(*op.sourceAccount, ltx, keys, sigs, getInnerTxHash(),
+                          partition);
         }
-        mutateScaledOperation(op, partition);
+        mutateScaledOperation(op, ltx, ctPoolIdToParam, partition);
     }
 }
 
@@ -352,13 +415,35 @@ TxSimApplyTransactionsWork::scaleLedger(
     // First, update transaction source accounts
     LedgerTxn ltx(mApp.getLedgerTxnRoot());
     mutateTxSourceAccounts(newEnv, ltx, keys, partition);
+
     mutateOperations(newEnv, ltx, keys, partition);
 
     auto simulateSigs = [&](xdr::xvector<DecoratedSignature, 20>& sigs,
-                            std::set<SecretKey> const& keys) {
-        auto txFrame = TransactionFrameBase::makeTransactionFromWire(
-            mApp.getNetworkID(), newEnv);
-        auto hash = txFrame->getContentsHash();
+                            std::set<SecretKey> const& keys,
+                            bool useInnerHash) {
+        Hash hash;
+        if (newEnv.type() == ENVELOPE_TYPE_TX_FEE_BUMP)
+        {
+            auto txFrame = std::make_shared<FeeBumpTransactionFrame>(
+                mApp.getNetworkID(), newEnv);
+            if (useInnerHash)
+            {
+                auto innerTxFrame = std::make_shared<TransactionFrame>(
+                    mApp.getNetworkID(), txFrame->convertInnerTxToV1(newEnv));
+                hash = innerTxFrame->getContentsHash();
+            }
+            else
+            {
+                hash = txFrame->getContentsHash();
+            }
+        }
+        else
+        {
+            auto txFrame = TransactionFrameBase::makeTransactionFromWire(
+                mApp.getNetworkID(), newEnv);
+            hash = txFrame->getContentsHash();
+        }
+
         sigs.clear();
         std::transform(
             keys.begin(), keys.end(), std::back_inserter(sigs),
@@ -369,17 +454,20 @@ TxSimApplyTransactionsWork::scaleLedger(
     // Handle v0 and v1 tx signatures, or fee-bump inner tx
     // Note: for fee-bump transactions, set inner tx signatures first
     // to ensure the right hash
-    auto newTxHash = simulateSigs(txbridge::getSignaturesInner(newEnv), keys);
+    auto newTxHash =
+        simulateSigs(txbridge::getSignaturesInner(newEnv), keys, true);
 
     // Second, if fee-bump tx, handle outer tx signatures
     if (newEnv.type() == ENVELOPE_TYPE_TX_FEE_BUMP)
     {
         std::set<SecretKey> outerTxKeys;
         auto& outerSigs = newEnv.feeBump().signatures;
-        addSignerKeys(newEnv.feeBump().tx.feeSource, ltx, outerTxKeys,
-                      outerSigs, partition);
+        addSignerKeys(
+            newEnv.feeBump().tx.feeSource, ltx, outerTxKeys, outerSigs,
+            mResultIter->result.result.innerResultPair().transactionHash,
+            partition);
         mutateScaledAccountID(newEnv.feeBump().tx.feeSource, partition);
-        newTxHash = simulateSigs(outerSigs, outerTxKeys);
+        newTxHash = simulateSigs(outerSigs, outerTxKeys, false);
     }
 
     // These are not exactly accurate, but sufficient to check result codes
@@ -516,7 +604,7 @@ TxSimApplyTransactionsWork::onReset()
         {
             LedgerUpgrade upgrade(LEDGER_UPGRADE_VERSION);
             upgrade.newLedgerVersion() =
-                Config::CURRENT_LEDGER_PROTOCOL_VERSION;
+                mApp.getConfig().LEDGER_PROTOCOL_VERSION;
             auto opaqueUpgrade = xdr::xdr_to_opaque(upgrade);
             sv.upgrades.emplace_back(opaqueUpgrade.begin(),
                                      opaqueUpgrade.end());
@@ -527,7 +615,7 @@ TxSimApplyTransactionsWork::onReset()
         auto txSet = std::make_shared<TxSetFrame>(mNetworkID, txSetXDR);
 
         sv.txSetHash = txSet->getContentsHash();
-        sv.closeTime = header.scpValue.closeTime + 1;
+        sv.closeTime = mHeaderHistory.header.scpValue.closeTime;
 
         LedgerCloseData closeData(header.ledgerSeq + 1, txSet, sv);
         lm.closeLedger(closeData);
@@ -572,9 +660,19 @@ TxSimApplyTransactionsWork::onRun()
     std::vector<TransactionEnvelope> transactions;
     std::vector<UpgradeType> upgrades;
     mResults.clear();
-    if (!getNextLedger(transactions, mResults, upgrades))
+
+    try
     {
-        return State::WORK_SUCCESS;
+        if (!getNextLedger(transactions, mResults, upgrades))
+        {
+            return State::WORK_SUCCESS;
+        }
+    }
+    catch (xdr::xdr_bad_message_size&)
+    {
+        CLOG_ERROR(History,
+                   "Failed to read xdr. Most likely a version mismatch");
+        return State::WORK_FAILURE;
     }
 
     // When creating SimulationTxSetFrame, we only want to use mMultiplier when
@@ -586,16 +684,17 @@ TxSimApplyTransactionsWork::onRun()
 
     DigitalBitsValue sv;
     sv.txSetHash = txSet->getContentsHash();
-    sv.closeTime = header.scpValue.closeTime + 1;
+    sv.closeTime = mHeaderHistory.header.scpValue.closeTime;
     sv.upgrades.insert(sv.upgrades.begin(), upgrades.begin(), upgrades.end());
 
     LedgerCloseData closeData(header.ledgerSeq + 1, txSet, sv);
     auto applyLedger = std::make_shared<ApplyLedgerWork>(mApp, closeData);
 
-    auto const& ham = mApp.getHistoryArchiveManager();
-    auto const& hm = mApp.getHistoryManager();
     bool waitForPublish = false;
-    auto condition = [&lm, &ham, &hm, waitForPublish]() mutable {
+    auto condition = [waitForPublish](Application& app) mutable {
+        auto const& lm = app.getLedgerManager();
+        auto const& ham = app.getHistoryArchiveManager();
+        auto const& hm = app.getHistoryManager();
         auto proceed = true;
         if (ham.hasAnyWritableHistoryArchive())
         {
@@ -619,7 +718,8 @@ TxSimApplyTransactionsWork::onRun()
 
     mApplyLedgerWork = std::make_shared<ConditionalWork>(
         mApp,
-        fmt::format("simulation-apply-ledger-{}", closeData.getLedgerSeq()),
+        fmt::format(FMT_STRING("simulation-apply-ledger-{:d}"),
+                    closeData.getLedgerSeq()),
         condition, applyLedger);
 
     mApplyLedgerWork->startWork(wakeSelfUpCallback());

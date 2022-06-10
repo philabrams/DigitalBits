@@ -31,8 +31,6 @@ TEST_CASE("manage data", "[tx][managedata]")
     VirtualClock clock;
     auto app = createTestApplication(clock, cfg);
 
-    app->start();
-
     // set up world
     auto root = TestAccount::createRoot(*app);
 
@@ -176,6 +174,15 @@ TEST_CASE("manage data", "[tx][managedata]")
 
         createModifyAndRemoveSponsoredEntry(
             *app, acc2, manageData(t1, &value), manageData(t1, &value2),
-            manageData(t1, &value), manageData(t1, nullptr), dataKey(acc2, t1));
+            manageData(t1, &value), manageData(t1, nullptr), dataKey(acc2, t1),
+            14);
+    }
+
+    SECTION("too many subentries")
+    {
+        auto acc1 =
+            root.create("acc1", app->getLedgerManager().getLastMinBalance(0));
+        tooManySubentries(*app, acc1, manageData(t1, &value),
+                          manageData(t2, &value2));
     }
 }

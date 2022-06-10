@@ -30,8 +30,10 @@ struct SponsorshipCounterKey
 class InternalLedgerKey
 {
   private:
+    size_t mutable mHash;
     InternalLedgerEntryType mType;
-    union {
+    union
+    {
         LedgerKey mLedgerKey;
         SponsorshipKey mSponsorshipKey;
         SponsorshipCounterKey mSponsorshipCounterKey;
@@ -44,7 +46,16 @@ class InternalLedgerKey
 
     void checkDiscriminant(InternalLedgerEntryType expected) const;
 
+    void type(InternalLedgerEntryType t);
+    LedgerKey& ledgerKeyRef();
+    SponsorshipKey& sponsorshipKeyRef();
+    SponsorshipCounterKey& sponsorshipCounterKeyRef();
+
   public:
+    static InternalLedgerKey makeSponsorshipKey(AccountID const& sponsoredId);
+    static InternalLedgerKey
+    makeSponsorshipCounterKey(AccountID const& sponsoringId);
+
     InternalLedgerKey();
     explicit InternalLedgerKey(InternalLedgerEntryType t);
 
@@ -60,19 +71,17 @@ class InternalLedgerKey
 
     ~InternalLedgerKey();
 
-    void type(InternalLedgerEntryType t);
     InternalLedgerEntryType type() const;
 
-    LedgerKey& ledgerKey();
     LedgerKey const& ledgerKey() const;
 
-    SponsorshipKey& sponsorshipKey();
     SponsorshipKey const& sponsorshipKey() const;
 
-    SponsorshipCounterKey& sponsorshipCounterKey();
     SponsorshipCounterKey const& sponsorshipCounterKey() const;
 
     std::string toString() const;
+
+    size_t hash() const;
 };
 
 struct SponsorshipEntry
@@ -91,7 +100,8 @@ class InternalLedgerEntry
 {
   private:
     InternalLedgerEntryType mType;
-    union {
+    union
+    {
         LedgerEntry mLedgerEntry;
         SponsorshipEntry mSponsorshipEntry;
         SponsorshipCounterEntry mSponsorshipCounterEntry;

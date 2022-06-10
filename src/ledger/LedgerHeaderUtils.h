@@ -13,6 +13,9 @@ class XDROutputFileStream;
 
 namespace LedgerHeaderUtils
 {
+
+uint32_t getFlags(LedgerHeader const& lh);
+
 bool isValid(LedgerHeader const& lh);
 
 void storeInDatabase(Database& db, LedgerHeader const& header);
@@ -25,6 +28,7 @@ std::shared_ptr<LedgerHeader> loadBySequence(Database& db, soci::session& sess,
                                              uint32_t seq);
 
 void deleteOldEntries(Database& db, uint32_t ledgerSeq, uint32_t count);
+void deleteNewerEntries(Database& db, uint32_t ledgerSeq);
 
 size_t copyToStream(Database& db, soci::session& sess, uint32_t ledgerSeq,
                     uint32_t ledgerCount, XDROutputFileStream& headersOut);

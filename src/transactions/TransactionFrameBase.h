@@ -43,6 +43,7 @@ class TransactionFrameBase
     virtual Hash const& getFullHash() const = 0;
 
     virtual uint32_t getNumOperations() const = 0;
+    virtual std::vector<Operation> const& getRawOperations() const = 0;
 
     virtual TransactionResult& getResult() = 0;
     virtual TransactionResultCode getResultCode() const = 0;
@@ -55,7 +56,7 @@ class TransactionFrameBase
     insertKeysForFeeProcessing(UnorderedSet<LedgerKey>& keys) const = 0;
     virtual void insertKeysForTxApply(UnorderedSet<LedgerKey>& keys) const = 0;
 
-    virtual void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID) = 0;
+    virtual void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee) = 0;
 
     virtual DigitalBitsMessage toDigitalBitsMessage() const = 0;
 };

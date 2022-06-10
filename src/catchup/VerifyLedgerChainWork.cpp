@@ -16,8 +16,6 @@
 #include <Tracy.hpp>
 #include <fmt/format.h>
 #include <fstream>
-#include <medida/meter.h>
-#include <medida/metrics_registry.h>
 
 namespace digitalbits
 {
@@ -102,12 +100,6 @@ VerifyLedgerChainWork::VerifyLedgerChainWork(
     , mTrustedMaxLedger(trustedMaxLedger)
     , mVerifiedMinLedgerPrevFuture(mVerifiedMinLedgerPrev.get_future().share())
     , mOutputStream(outputStream)
-    , mVerifyLedgerSuccess(app.getMetrics().NewMeter(
-          {"history", "verify-ledger", "success"}, "event"))
-    , mVerifyLedgerChainSuccess(app.getMetrics().NewMeter(
-          {"history", "verify-ledger-chain", "success"}, "event"))
-    , mVerifyLedgerChainFailure(app.getMetrics().NewMeter(
-          {"history", "verify-ledger-chain", "failure"}, "event"))
 {
     // LCL should be at-or-after genesis and we should have a hash.
     releaseAssert(lastClosedLedger.first >= LedgerManager::GENESIS_LEDGER_SEQ);
@@ -131,7 +123,7 @@ VerifyLedgerChainWork::onReset()
 {
     CLOG_INFO(History, "Verifying ledgers {}", mRange.toString());
 
-    mVerifiedAhead = LedgerNumHashPair(0, nullptr);
+    mVerifiedAhead = LedgerNumHashPair(0, std::nullopt);
     mMaxVerifiedLedgerOfMinCheckpoint = {};
     mVerifiedLedgers.clear();
     mCurrCheckpoint = mRange.mCount == 0
@@ -169,9 +161,22 @@ VerifyLedgerChainWork::verifyHistoryOfSingleCheckpoint()
     CLOG_DEBUG(History, "Verifying ledger headers from {} for checkpoint {}",
                ft.localPath_nogz(), mCurrCheckpoint);
 
-    while (hdrIn && hdrIn.readOne(curr))
+    while (hdrIn)
     {
-        if (curr.header.ledgerVersion > Config::CURRENT_LEDGER_PROTOCOL_VERSION)
+        try
+        {
+            if (!hdrIn.readOne(curr))
+            {
+                break;
+            }
+        }
+        catch (xdr::xdr_bad_message_size&)
+        {
+            return HistoryManager::VERIFY_STATUS_ERR_BAD_LEDGER_VERSION;
+        }
+
+        if (curr.header.ledgerVersion >
+            mApp.getConfig().LEDGER_PROTOCOL_VERSION)
         {
             return HistoryManager::VERIFY_STATUS_ERR_BAD_LEDGER_VERSION;
         }
@@ -249,7 +254,7 @@ VerifyLedgerChainWork::verifyHistoryOfSingleCheckpoint()
             }
         }
 
-        mVerifyLedgerSuccess.Mark();
+        mApp.getCatchupManager().ledgersVerified();
         prev = curr;
 
         // No need to keep verifying if the range is covered
@@ -290,7 +295,7 @@ VerifyLedgerChainWork::verifyHistoryOfSingleCheckpoint()
         // Note `mVerifiedAhead` is written here after being read moments
         // before. We're currently writing the value to be used in the _next_
         // call to this method.
-        auto hash = digitalbits::make_optional<Hash>(first.header.previousLedgerHash);
+        auto hash = std::make_optional<Hash>(first.header.previousLedgerHash);
         mVerifiedAhead = LedgerNumHashPair(first.header.ledgerSeq - 1, hash);
     }
 
@@ -302,7 +307,7 @@ VerifyLedgerChainWork::verifyHistoryOfSingleCheckpoint()
         // If so, there should be no "saved" incoming hash-link value from
         // a previous iteration.
         releaseAssert(incoming.first == 0);
-        releaseAssert(incoming.second.get() == nullptr);
+        releaseAssert(!incoming.second.has_value());
 
         // Instead, there _should_ be a value in the shared_future this work
         // object reads its initial trust from. If anything went wrong upstream
@@ -347,7 +352,8 @@ VerifyLedgerChainWork::verifyHistoryOfSingleCheckpoint()
         // Write outgoing trust-link to shared write-once variable.
         LedgerNumHashPair outgoing;
         outgoing.first = first.header.ledgerSeq - 1;
-        outgoing.second = digitalbits::make_optional<Hash>(first.header.previousLedgerHash);
+        outgoing.second =
+            std::make_optional<Hash>(first.header.previousLedgerHash);
 
         try
         {
@@ -370,7 +376,7 @@ VerifyLedgerChainWork::verifyHistoryOfSingleCheckpoint()
     }
 
     mVerifiedLedgers.emplace_back(curr.header.ledgerSeq,
-                                  digitalbits::make_optional<Hash>(curr.hash));
+                                  std::make_optional<Hash>(curr.hash));
     return HistoryManager::VERIFY_STATUS_OK;
 }
 
@@ -394,7 +400,6 @@ VerifyLedgerChainWork::onRun()
     if (mRange.mCount == 0)
     {
         CLOG_INFO(History, "History chain [0,0) trivially verified");
-        mVerifyLedgerChainSuccess.Mark();
         return BasicWork::State::WORK_SUCCESS;
     }
 
@@ -416,7 +421,7 @@ VerifyLedgerChainWork::onRun()
     {
         CLOG_ERROR(History, "Catchup material failed verification");
         CLOG_ERROR(History, "{}", POSSIBLY_CORRUPTED_LOCAL_FS);
-        mVerifyLedgerChainFailure.Mark();
+        mApp.getCatchupManager().ledgerChainsVerificationFailed();
         return BasicWork::State::WORK_FAILURE;
     }
 
@@ -428,7 +433,6 @@ VerifyLedgerChainWork::onRun()
         {
             CLOG_INFO(History, "History chain [{},{}] verified", mRange.mFirst,
                       mRange.last());
-            mVerifyLedgerChainSuccess.Mark();
             return BasicWork::State::WORK_SUCCESS;
         }
         mCurrCheckpoint -= mApp.getHistoryManager().getCheckpointFrequency();
@@ -438,31 +442,31 @@ VerifyLedgerChainWork::onRun()
                             "unsupported ledger version, propagating "
                             "failure");
         CLOG_ERROR(History, "{}", UPGRADE_DIGITALBITS_CORE);
-        mVerifyLedgerChainFailure.Mark();
+        mApp.getCatchupManager().ledgerChainsVerificationFailed();
         return BasicWork::State::WORK_FAILURE;
     case HistoryManager::VERIFY_STATUS_ERR_BAD_HASH:
         CLOG_ERROR(History, "Catchup material failed verification - hash "
                             "mismatch, propagating failure");
         CLOG_ERROR(History, "{}", POSSIBLY_CORRUPTED_HISTORY);
-        mVerifyLedgerChainFailure.Mark();
+        mApp.getCatchupManager().ledgerChainsVerificationFailed();
         return BasicWork::State::WORK_FAILURE;
     case HistoryManager::VERIFY_STATUS_ERR_OVERSHOT:
         CLOG_ERROR(History, "Catchup material failed verification - "
                             "overshot, propagating failure");
         CLOG_ERROR(History, "{}", POSSIBLY_CORRUPTED_HISTORY);
-        mVerifyLedgerChainFailure.Mark();
+        mApp.getCatchupManager().ledgerChainsVerificationFailed();
         return BasicWork::State::WORK_FAILURE;
     case HistoryManager::VERIFY_STATUS_ERR_UNDERSHOT:
         CLOG_ERROR(History, "Catchup material failed verification - "
                             "undershot, propagating failure");
         CLOG_ERROR(History, "{}", POSSIBLY_CORRUPTED_HISTORY);
-        mVerifyLedgerChainFailure.Mark();
+        mApp.getCatchupManager().ledgerChainsVerificationFailed();
         return BasicWork::State::WORK_FAILURE;
     case HistoryManager::VERIFY_STATUS_ERR_MISSING_ENTRIES:
         CLOG_ERROR(History, "Catchup material failed verification - "
                             "missing entries, propagating failure");
         CLOG_ERROR(History, "{}", POSSIBLY_CORRUPTED_HISTORY);
-        mVerifyLedgerChainFailure.Mark();
+        mApp.getCatchupManager().ledgerChainsVerificationFailed();
         return BasicWork::State::WORK_FAILURE;
     default:
         releaseAssert(false);

@@ -4,16 +4,12 @@
 
 // This file contains tests for individual Buckets, low-level invariants
 // concerning the composition of buckets, the semantics of the merge
-// operation(s), and the perfomance of merging and applying buckets to the
+// operation(s), and the performance of merging and applying buckets to the
 // database.
 
 // ASIO is somewhat particular about when it gets included -- it wants to be the
 // first to include <windows.h> -- so we try to include it before everything
 // else.
-
-#include <algorithm>
-#include <random>
-
 #include "util/asio.h"
 #include "bucket/BucketTests.h"
 #include "bucket/Bucket.h"
@@ -23,6 +19,7 @@
 #include "ledger/LedgerTxn.h"
 #include "ledger/test/LedgerTestUtils.h"
 #include "lib/catch.hpp"
+#include "lib/util/stdrandom.h"
 #include "main/Application.h"
 #include "test/TestUtils.h"
 #include "test/test.h"
@@ -64,19 +61,27 @@ void
 for_versions_with_differing_bucket_logic(
     Config const& cfg, std::function<void(Config const&)> const& f)
 {
-    for_versions({Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY - 1,
-                  Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY,
-                  Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED},
-                 cfg, f);
+    for_versions(
+        {static_cast<uint32_t>(
+             Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY) -
+             1,
+         static_cast<uint32_t>(
+             Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY),
+         static_cast<uint32_t>(Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED)},
+        cfg, f);
 }
 
 void
 for_versions_with_differing_initentry_logic(
     Config const& cfg, std::function<void(Config const&)> const& f)
 {
-    for_versions({Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY - 1,
-                  Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY},
-                 cfg, f);
+    for_versions(
+        {static_cast<uint32_t>(
+             Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY) -
+             1,
+         static_cast<uint32_t>(
+             Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY)},
+        cfg, f);
 }
 
 EntryCounts::EntryCounts(std::shared_ptr<Bucket> bucket)
@@ -205,6 +210,10 @@ TEST_CASE("merging bucket entries", "[bucket]")
                     liveEntry.data.claimableBalance() =
                         LedgerTestUtils::generateValidClaimableBalanceEntry(10);
                     break;
+                case LIQUIDITY_POOL:
+                    liveEntry.data.liquidityPool() =
+                        LedgerTestUtils::generateValidLiquidityPoolEntry(10);
+                    break;
                 default:
                     abort();
                 }
@@ -231,6 +240,7 @@ TEST_CASE("merging bucket entries", "[bucket]")
         checkDeadAnnihilatesLive(OFFER);
         checkDeadAnnihilatesLive(DATA);
         checkDeadAnnihilatesLive(CLAIMABLE_BALANCE);
+        checkDeadAnnihilatesLive(LIQUIDITY_POOL);
 
         SECTION("random dead entries annihilates live entries")
         {
@@ -276,11 +286,24 @@ TEST_CASE("merging bucket entries", "[bucket]")
                 app->getBucketManager(), getAppLedgerVersion(app), {}, live,
                 dead, /*countMergeEvents=*/true, clock.getIOContext(),
                 /*doFsync=*/true);
-
-            std::random_device rd;
-            std::mt19937 g(rd());
-            std::shuffle(live.begin(), live.end(), g);
-
+            // We could just shuffle the live values, but libstdc++7 has a bug
+            // that causes self-moves when shuffling such types, in a way that
+            // traps in debug mode. Instead we shuffle indexes. See
+            // https://gcc.gnu.org/bugzilla/show_bug.cgi?id=85828
+            std::vector<size_t> liveIdxs;
+            for (size_t i = 0; i < live.size(); ++i)
+            {
+                liveIdxs.emplace_back(i);
+            }
+            digitalbits::shuffle(liveIdxs.begin(), liveIdxs.end(), gRandomEngine);
+            for (size_t src = 0; src < live.size(); ++src)
+            {
+                size_t dst = liveIdxs.at(src);
+                if (dst != src)
+                {
+                    std::swap(live.at(src), live.at(dst));
+                }
+            }
             size_t liveCount = live.size();
             for (auto& e : live)
             {
@@ -362,7 +385,7 @@ TEST_CASE("merges proceed old-style despite newer shadows",
     Config const& cfg = getTestConfig();
     Application::pointer app = createTestApplication(clock, cfg);
     auto& bm = app->getBucketManager();
-    auto v12 = Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED;
+    auto v12 = static_cast<uint32_t>(Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED);
     auto v11 = v12 - 1;
     auto v10 = v11 - 1;
 
@@ -467,7 +490,8 @@ TEST_CASE("bucket output iterator rejects wrong-version entries",
 {
     VirtualClock clock;
     Config const& cfg = getTestConfig();
-    auto vers_new = Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY;
+    auto vers_new = static_cast<uint32_t>(
+        Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
     BucketMetadata meta;
     meta.ledgerVersion = vers_new - 1;
     Application::pointer app = createTestApplication(clock, cfg);
@@ -495,8 +519,8 @@ TEST_CASE("merging bucket entries with initentry", "[bucket][initentry]")
         auto vers = getAppLedgerVersion(app);
 
         // Whether we're in the era of supporting or not-supporting INITENTRY.
-        bool initEra =
-            (vers >= Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
+        bool initEra = protocolVersionStartsFrom(
+            vers, Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
 
         CLOG_INFO(Bucket, "=== finished buckets for initial account == ");
 
@@ -684,8 +708,8 @@ TEST_CASE("merging bucket entries with initentry with shadows",
         auto vers = getAppLedgerVersion(app);
 
         // Whether we're in the era of supporting or not-supporting INITENTRY.
-        bool initEra =
-            (vers >= Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
+        bool initEra = protocolVersionStartsFrom(
+            vers, Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
 
         CLOG_INFO(Bucket, "=== finished buckets for initial account == ");
 
@@ -947,7 +971,6 @@ TEST_CASE("bucket apply", "[bucket]")
     Config cfg(getTestConfig());
     for_versions_with_differing_bucket_logic(cfg, [&](Config const& cfg) {
         Application::pointer app = createTestApplication(clock, cfg);
-        app->start();
 
         std::vector<LedgerEntry> live(10), noLive;
         std::vector<LedgerKey> dead, noDead;
@@ -993,7 +1016,6 @@ TEST_CASE("bucket apply bench", "[bucketbench][!hide]")
         VirtualClock clock;
         Config cfg(getTestConfig(0, mode));
         Application::pointer app = createTestApplication(clock, cfg);
-        app->start();
 
         std::vector<LedgerEntry> live(100000);
         std::vector<LedgerKey> noDead;

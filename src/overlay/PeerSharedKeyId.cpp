@@ -24,8 +24,8 @@ namespace std
 {
 
 size_t
-hash<digitalbits::PeerSharedKeyId>::
-operator()(digitalbits::PeerSharedKeyId const& x) const noexcept
+hash<digitalbits::PeerSharedKeyId>::operator()(
+    digitalbits::PeerSharedKeyId const& x) const noexcept
 {
     return std::hash<digitalbits::Curve25519Public>{}(x.mECDHPublicKey) ^
            std::hash<int>{}(static_cast<int>(x.mRole));

@@ -7,6 +7,7 @@
 #include "crypto/SecretKey.h"
 #include "crypto/ShortHash.h"
 #include "database/Database.h"
+#include "lib/util/stdrandom.h"
 #include "main/Application.h"
 #include "main/Config.h"
 #include "main/ErrorMessages.h"
@@ -15,6 +16,7 @@
 #include "overlay/PeerManager.h"
 #include "overlay/RandomPeerSource.h"
 #include "overlay/TCPPeer.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/Math.h"
 #include "util/Thread.h"
@@ -37,6 +39,7 @@ using namespace soci;
 using namespace std;
 
 constexpr std::chrono::seconds PEER_IP_RESOLVE_DELAY(600);
+constexpr std::chrono::seconds PEER_IP_RESOLVE_RETRY_DELAY(10);
 
 OverlayManagerImpl::PeersList::PeersList(
     OverlayManagerImpl& overlayManager,
@@ -87,9 +90,8 @@ void
 OverlayManagerImpl::PeersList::removePeer(Peer* peer)
 {
     ZoneScoped;
-    CLOG_TRACE(Overlay, "Removing peer {} @{}", peer->toString(),
-               mOverlayManager.mApp.getConfig().PEER_PORT);
-    assert(peer->getState() == Peer::CLOSING);
+    CLOG_TRACE(Overlay, "Removing peer {}", peer->toString());
+    releaseAssert(peer->getState() == Peer::CLOSING);
 
     auto pendingIt =
         std::find_if(std::begin(mPending), std::end(mPending),
@@ -122,9 +124,8 @@ bool
 OverlayManagerImpl::PeersList::moveToAuthenticated(Peer::pointer peer)
 {
     ZoneScoped;
-    CLOG_TRACE(Overlay, "Moving peer {} to authenticated  state: {} @{}",
-               peer->toString(), peer->getState(),
-               mOverlayManager.mApp.getConfig().PEER_PORT);
+    CLOG_TRACE(Overlay, "Moving peer {} to authenticated  state: {}",
+               peer->toString(), peer->getState());
     auto pendingIt = std::find(std::begin(mPending), std::end(mPending), peer);
     if (pendingIt == std::end(mPending))
     {
@@ -161,8 +162,8 @@ bool
 OverlayManagerImpl::PeersList::acceptAuthenticatedPeer(Peer::pointer peer)
 {
     ZoneScoped;
-    CLOG_TRACE(Overlay, "Trying to promote peer to authenticated {} @{}",
-               peer->toString(), mOverlayManager.mApp.getConfig().PEER_PORT);
+    CLOG_TRACE(Overlay, "Trying to promote peer to authenticated {}",
+               peer->toString());
     if (mOverlayManager.isPreferred(peer.get()))
     {
         if (mAuthenticated.size() < mMaxAuthenticatedCount)
@@ -267,6 +268,9 @@ OverlayManagerImpl::OverlayManagerImpl(Application& app)
     , mPeerIPTimer(app)
     , mFloodGate(app)
     , mSurveyManager(make_shared<SurveyManager>(app))
+    , mResolvingPeersWithBackoff(true)
+    , mResolvingPeersRetryCount(0)
+
 {
     mPeerSources[PeerType::INBOUND] = std::make_unique<RandomPeerSource>(
         mPeerManager, RandomPeerSource::nextAttemptCutoff(PeerType::INBOUND));
@@ -310,12 +314,19 @@ bool
 OverlayManagerImpl::connectToImpl(PeerBareAddress const& address,
                                   bool forceoutbound)
 {
-    CLOG_TRACE(Overlay, "Connect to {} @{}", address.toString(),
-               mApp.getConfig().PEER_PORT);
+    CLOG_TRACE(Overlay, "Connect to {}", address.toString());
     auto currentConnection = getConnectedPeer(address);
     if (!currentConnection || (forceoutbound && currentConnection->getRole() ==
                                                     Peer::REMOTE_CALLED_US))
     {
+        if (availableOutboundPendingSlots() <= 0)
+        {
+            CLOG_DEBUG(Overlay,
+                       "Peer rejected - all outbound pending connections "
+                       "taken: {}",
+                       currentConnection->toString());
+            return false;
+        }
         getPeerManager().update(address, PeerManager::BackOffUpdate::INCREASE);
         return addOutboundConnection(TCPPeer::initiate(mApp, address));
     }
@@ -384,8 +395,10 @@ OverlayManagerImpl::storeConfigPeers()
 {
     ZoneScoped;
     // Synchronously resolve and store peers from the config
-    storePeerList(resolvePeers(mApp.getConfig().KNOWN_PEERS), false, true);
-    storePeerList(resolvePeers(mApp.getConfig().PREFERRED_PEERS), true, true);
+    storePeerList(resolvePeers(mApp.getConfig().KNOWN_PEERS).first, false,
+                  true);
+    storePeerList(resolvePeers(mApp.getConfig().PREFERRED_PEERS).first, true,
+                  true);
 }
 
 void
@@ -400,7 +413,7 @@ void
 OverlayManagerImpl::triggerPeerResolution()
 {
     ZoneScoped;
-    assert(!mResolvedPeers.valid());
+    releaseAssert(!mResolvedPeers.valid());
 
     // Trigger DNS resolution on the background thread
     using task_t = std::packaged_task<ResolvedPeers()>;
@@ -410,9 +423,10 @@ OverlayManagerImpl::triggerPeerResolution()
             auto known = resolvePeers(this->mApp.getConfig().KNOWN_PEERS);
             auto preferred =
                 resolvePeers(this->mApp.getConfig().PREFERRED_PEERS);
-            return ResolvedPeers{known, preferred};
+            return ResolvedPeers{known.first, preferred.first,
+                                 known.second || preferred.second};
         }
-        return ResolvedPeers{};
+        return ResolvedPeers{{}, {}, false};
     });
 
     mResolvedPeers = task->get_future();
@@ -420,12 +434,13 @@ OverlayManagerImpl::triggerPeerResolution()
                                 "OverlayManager: resolve peer IPs");
 }
 
-std::vector<PeerBareAddress>
+std::pair<std::vector<PeerBareAddress>, bool>
 OverlayManagerImpl::resolvePeers(std::vector<string> const& peers)
 {
     ZoneScoped;
     std::vector<PeerBareAddress> addresses;
     addresses.reserve(peers.size());
+    bool errors = false;
     for (auto const& peer : peers)
     {
         try
@@ -434,6 +449,7 @@ OverlayManagerImpl::resolvePeers(std::vector<string> const& peers)
         }
         catch (std::runtime_error& e)
         {
+            errors = true;
             CLOG_ERROR(Overlay, "Unable to resolve peer '{}': {}", peer,
                        e.what());
             CLOG_ERROR(Overlay, "Peer may be no longer available under "
@@ -442,14 +458,14 @@ OverlayManagerImpl::resolvePeers(std::vector<string> const& peers)
                                 "settings in configuration file");
         }
     }
-    return addresses;
+    return std::make_pair(addresses, errors);
 }
 
 std::vector<PeerBareAddress>
 OverlayManagerImpl::getPeersToConnectTo(int maxNum, PeerType peerType)
 {
     ZoneScoped;
-    assert(maxNum >= 0);
+    releaseAssert(maxNum >= 0);
     if (maxNum == 0)
     {
         return {};
@@ -495,8 +511,7 @@ void
 OverlayManagerImpl::tick()
 {
     ZoneScoped;
-    CLOG_TRACE(Overlay, "OverlayManagerImpl tick  @{}",
-               mApp.getConfig().PEER_PORT);
+    CLOG_TRACE(Overlay, "OverlayManagerImpl tick");
 
     if (futureIsReady(mResolvedPeers))
     {
@@ -504,7 +519,33 @@ OverlayManagerImpl::tick()
         auto res = mResolvedPeers.get();
         storePeerList(res.known, false, false);
         storePeerList(res.preferred, true, false);
-        mPeerIPTimer.expires_from_now(PEER_IP_RESOLVE_DELAY);
+        std::chrono::seconds retryDelay = PEER_IP_RESOLVE_DELAY;
+
+        if (mResolvingPeersWithBackoff)
+        {
+            // no errors -> disable retries completely from now on
+            if (!res.errors)
+            {
+                mResolvingPeersWithBackoff = false;
+            }
+            else
+            {
+                ++mResolvingPeersRetryCount;
+                auto newDelay =
+                    mResolvingPeersRetryCount * PEER_IP_RESOLVE_RETRY_DELAY;
+                // if we retried too many times, give up on retries
+                if (newDelay > PEER_IP_RESOLVE_DELAY)
+                {
+                    mResolvingPeersWithBackoff = false;
+                }
+                else
+                {
+                    retryDelay = newDelay;
+                }
+            }
+        }
+
+        mPeerIPTimer.expires_from_now(retryDelay);
         mPeerIPTimer.async_wait([this]() { this->triggerPeerResolution(); },
                                 VirtualTimer::onFailureNoop);
     }
@@ -530,7 +571,7 @@ OverlayManagerImpl::tick()
         auto pendingUsedByPreferred =
             connectTo(preferredToConnect, PeerType::PREFERRED);
 
-        assert(pendingUsedByPreferred <= availablePendingSlots);
+        releaseAssert(pendingUsedByPreferred <= availablePendingSlots);
         availablePendingSlots -= pendingUsedByPreferred;
     }
 
@@ -550,7 +591,7 @@ OverlayManagerImpl::tick()
                 : availablePendingSlots;
         auto pendingUsedByOutbound =
             connectTo(outboundToConnect, PeerType::OUTBOUND);
-        assert(pendingUsedByOutbound <= availablePendingSlots);
+        releaseAssert(pendingUsedByOutbound <= availablePendingSlots);
         availablePendingSlots -= pendingUsedByOutbound;
     }
 
@@ -608,7 +649,8 @@ OverlayManagerImpl::nonPreferredAuthenticatedCount() const
         }
     }
 
-    assert(nonPreferredCount <= mApp.getConfig().TARGET_PEER_CONNECTIONS);
+    releaseAssert(nonPreferredCount <=
+                  mApp.getConfig().TARGET_PEER_CONNECTIONS);
     return nonPreferredCount;
 }
 
@@ -632,13 +674,14 @@ OverlayManagerImpl::updateSizeCounters()
     mOverlayMetrics.mPendingPeersSize.set_count(getPendingPeersCount());
     mOverlayMetrics.mAuthenticatedPeersSize.set_count(
         getAuthenticatedPeersCount());
+    mOverlayMetrics.mFlowControlPercent.set_count(getFlowControlPercentage());
 }
 
 void
 OverlayManagerImpl::addInboundConnection(Peer::pointer peer)
 {
     ZoneScoped;
-    assert(peer->getRole() == Peer::REMOTE_CALLED_US);
+    releaseAssert(peer->getRole() == Peer::REMOTE_CALLED_US);
     mInboundPeers.mConnectionsAttempted.Mark();
 
     auto haveSpace = mInboundPeers.mPending.size() <
@@ -674,8 +717,7 @@ OverlayManagerImpl::addInboundConnection(Peer::pointer peer)
                    Peer::DropMode::IGNORE_WRITE_QUEUE);
         return;
     }
-    CLOG_DEBUG(Overlay, "New (inbound) connected peer {} @{}", peer->toString(),
-               mApp.getConfig().PEER_PORT);
+    CLOG_DEBUG(Overlay, "New (inbound) connected peer {}", peer->toString());
     mInboundPeers.mConnectionsEstablished.Mark();
     mInboundPeers.mPending.push_back(peer);
     updateSizeCounters();
@@ -694,17 +736,16 @@ bool
 OverlayManagerImpl::addOutboundConnection(Peer::pointer peer)
 {
     ZoneScoped;
-    assert(peer->getRole() == Peer::WE_CALLED_REMOTE);
+    releaseAssert(peer->getRole() == Peer::WE_CALLED_REMOTE);
     mOutboundPeers.mConnectionsAttempted.Mark();
 
-    if (mShuttingDown || mOutboundPeers.mPending.size() >=
-                             mApp.getConfig().MAX_OUTBOUND_PENDING_CONNECTIONS)
+    if (mShuttingDown || availableOutboundPendingSlots() <= 0)
     {
         if (!mShuttingDown)
         {
             CLOG_DEBUG(Overlay,
-                       "Peer rejected - all outbound connections taken: {} @{}",
-                       peer->toString(), mApp.getConfig().PEER_PORT);
+                       "Peer rejected - all outbound connections taken: {}",
+                       peer->toString());
             CLOG_DEBUG(Overlay, "If you wish to allow for more pending "
                                 "outbound connections, please update "
                                 "your MAX_PENDING_CONNECTIONS setting in "
@@ -717,8 +758,7 @@ OverlayManagerImpl::addOutboundConnection(Peer::pointer peer)
                    Peer::DropMode::IGNORE_WRITE_QUEUE);
         return false;
     }
-    CLOG_DEBUG(Overlay, "New (outbound) connected peer {} @{}",
-               peer->toString(), mApp.getConfig().PEER_PORT);
+    CLOG_DEBUG(Overlay, "New (outbound) connected peer {}", peer->toString());
     mOutboundPeers.mConnectionsEstablished.Mark();
     mOutboundPeers.mPending.push_back(peer);
     updateSizeCounters();
@@ -799,6 +839,24 @@ OverlayManagerImpl::getPendingPeersCount() const
                             mOutboundPeers.mPending.size());
 }
 
+int64_t
+OverlayManagerImpl::getFlowControlPercentage() const
+{
+    auto allPeers = getAuthenticatedPeers();
+    if (allPeers.empty())
+    {
+        return 0;
+    }
+
+    auto fcCount =
+        std::count_if(allPeers.begin(), allPeers.end(), [&](auto const& item) {
+            return item.second->isFlowControlled();
+        });
+
+    auto pct = static_cast<double>(fcCount) / allPeers.size() * 100;
+    return std::llround(pct);
+}
+
 int
 OverlayManagerImpl::getAuthenticatedPeersCount() const
 {
@@ -814,8 +872,7 @@ OverlayManagerImpl::isPreferred(Peer* peer) const
     if (mConfigurationPreferredPeers.find(peer->getAddress()) !=
         mConfigurationPreferredPeers.end())
     {
-        CLOG_DEBUG(Overlay, "Peer {} is preferred  @{}", pstr,
-                   mApp.getConfig().PEER_PORT);
+        CLOG_DEBUG(Overlay, "Peer {} is preferred", pstr);
         return true;
     }
 
@@ -823,16 +880,20 @@ OverlayManagerImpl::isPreferred(Peer* peer) const
     {
         if (mApp.getConfig().PREFERRED_PEER_KEYS.count(peer->getPeerID()) != 0)
         {
-            CLOG_DEBUG(Overlay, "Peer key {} is preferred @{}",
-                       mApp.getConfig().toShortString(peer->getPeerID()),
-                       mApp.getConfig().PEER_PORT);
+            CLOG_DEBUG(Overlay, "Peer key {} is preferred",
+                       mApp.getConfig().toShortString(peer->getPeerID()));
             return true;
         }
     }
 
-    CLOG_TRACE(Overlay, "Peer {} is not preferred @{}", pstr,
-               mApp.getConfig().PEER_PORT);
+    CLOG_TRACE(Overlay, "Peer {} is not preferred", pstr);
     return false;
+}
+
+bool
+OverlayManagerImpl::isFloodMessage(DigitalBitsMessage const& msg)
+{
+    return msg.type() == SCP_MESSAGE || msg.type() == TRANSACTION;
 }
 
 std::vector<Peer::pointer>
@@ -882,7 +943,7 @@ OverlayManagerImpl::extractPeersFromMap(
 void
 OverlayManagerImpl::shufflePeerList(std::vector<Peer::pointer>& peerList)
 {
-    std::shuffle(peerList.begin(), peerList.end(), gRandomEngine);
+    digitalbits::shuffle(peerList.begin(), peerList.end(), gRandomEngine);
 }
 
 bool
@@ -900,12 +961,16 @@ OverlayManagerImpl::forgetFloodedMsg(Hash const& msgID)
     mFloodGate.forgetRecord(msgID);
 }
 
-void
+bool
 OverlayManagerImpl::broadcastMessage(DigitalBitsMessage const& msg, bool force)
 {
     ZoneScoped;
-    mOverlayMetrics.mMessagesBroadcast.Mark();
-    mFloodGate.broadcast(msg, force);
+    auto res = mFloodGate.broadcast(msg, force);
+    if (res)
+    {
+        mOverlayMetrics.mMessagesBroadcast.Mark();
+    }
+    return res;
 }
 
 void
@@ -974,20 +1039,15 @@ OverlayManagerImpl::recordMessageMetric(DigitalBitsMessage const& digitalbitsMsg
 {
     ZoneScoped;
     auto logMessage = [&](bool unique, std::string const& msgType) {
-        if (Logging::logTrace("Overlay"))
-        {
-            CLOG_TRACE(Overlay, "recv: {} {} ({}) of size: {} from: {} @{}",
-                       (unique ? "unique" : "duplicate"),
-                       peer->msgSummary(digitalbitsMsg), msgType,
-                       xdr::xdr_argpack_size(digitalbitsMsg),
-                       mApp.getConfig().toShortString(peer->getPeerID()),
-                       mApp.getConfig().PEER_PORT);
-        }
+        CLOG_TRACE(Overlay, "recv: {} {} ({}) of size: {} from: {}",
+                   (unique ? "unique" : "duplicate"),
+                   peer->msgSummary(digitalbitsMsg), msgType,
+                   xdr::xdr_argpack_size(digitalbitsMsg),
+                   mApp.getConfig().toShortString(peer->getPeerID()));
     };
 
     bool flood = false;
-    if (digitalbitsMsg.type() == TRANSACTION || digitalbitsMsg.type() == SCP_MESSAGE ||
-        digitalbitsMsg.type() == SURVEY_REQUEST ||
+    if (isFloodMessage(digitalbitsMsg) || digitalbitsMsg.type() == SURVEY_REQUEST ||
         digitalbitsMsg.type() == SURVEY_RESPONSE)
     {
         flood = true;

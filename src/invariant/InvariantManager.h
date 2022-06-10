@@ -36,9 +36,9 @@ class InvariantManager
     virtual Json::Value getJsonInfo() = 0;
     virtual std::vector<std::string> getEnabledInvariants() const = 0;
 
-    virtual void checkOnBucketApply(std::shared_ptr<Bucket const> bucket,
-                                    uint32_t ledger, uint32_t level,
-                                    bool isCurr) = 0;
+    virtual void checkOnBucketApply(
+        std::shared_ptr<Bucket const> bucket, uint32_t ledger, uint32_t level,
+        bool isCurr, std::function<bool(LedgerEntryType)> entryTypeFilter) = 0;
 
     virtual void checkOnOperationApply(Operation const& operation,
                                        OperationResult const& opres,
@@ -47,6 +47,11 @@ class InvariantManager
     virtual void registerInvariant(std::shared_ptr<Invariant> invariant) = 0;
 
     virtual void enableInvariant(std::string const& name) = 0;
+
+#ifdef BUILD_TESTS
+    virtual void snapshotForFuzzer() = 0;
+    virtual void resetForFuzzer() = 0;
+#endif // BUILD_TESTS
 
     template <typename T, typename... Args>
     std::shared_ptr<T>

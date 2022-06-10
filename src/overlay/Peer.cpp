@@ -22,6 +22,7 @@
 #include "overlay/DigitalBitsXDR.h"
 #include "overlay/SurveyManager.h"
 #include "util/Decoder.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 
@@ -57,8 +58,13 @@ Peer::Peer(Application& app, PeerRole role)
     , mRecurringTimer(app)
     , mLastRead(app.getClock().now())
     , mLastWrite(app.getClock().now())
+    , mNoOutboundCapacity(
+          std::make_optional<VirtualClock::time_point>(app.getClock().now()))
     , mEnqueueTimeOfLastWrite(app.getClock().now())
     , mPeerMetrics(app.getClock().now())
+    , mFlowControlState(Peer::FlowControlState::DONT_KNOW)
+    , mCapacity{app.getConfig().PEER_FLOOD_READING_CAPACITY,
+                app.getConfig().PEER_READING_CAPACITY}
 {
     mPingSentTime = PING_NOT_SENT;
     mLastPing = std::chrono::hours(24); // some default very high value
@@ -67,24 +73,88 @@ Peer::Peer(Application& app, PeerRole role)
 }
 
 void
+Peer::beginMesssageProcessing(DigitalBitsMessage const& msg)
+{
+    // Check if flow control is enabled on the local node
+    if (flowControlEnabled() == Peer::FlowControlState::ENABLED)
+    {
+        releaseAssert(mCapacity.mTotalCapacity > 0);
+        mCapacity.mTotalCapacity--;
+
+        if (mApp.getOverlayManager().isFloodMessage(msg))
+        {
+            if (mCapacity.mFloodCapacity == 0)
+            {
+                drop("unexpected flood message, peer at capacity",
+                     Peer::DropDirection::WE_DROPPED_REMOTE,
+                     Peer::DropMode::IGNORE_WRITE_QUEUE);
+                return;
+            }
+
+            mCapacity.mFloodCapacity--;
+            if (mCapacity.mFloodCapacity == 0)
+            {
+                CLOG_DEBUG(Overlay, "No flood capacity for peer {}",
+                           mApp.getConfig().toShortString(getPeerID()));
+            }
+        }
+    }
+}
+
+Peer::MsgCapacityTracker::MsgCapacityTracker(std::weak_ptr<Peer> peer,
+                                             DigitalBitsMessage const& msg)
+    : mWeakPeer(peer), mMsg(msg)
+{
+    auto self = mWeakPeer.lock();
+    if (!self)
+    {
+        throw std::runtime_error("Invalid peer");
+    }
+    self->beginMesssageProcessing(mMsg);
+}
+
+Peer::MsgCapacityTracker::~MsgCapacityTracker()
+{
+    auto self = mWeakPeer.lock();
+    if (self)
+    {
+        self->endMessageProcessing(mMsg);
+    }
+}
+
+DigitalBitsMessage const&
+Peer::MsgCapacityTracker::getMessage()
+{
+    return mMsg;
+}
+
+std::weak_ptr<Peer>
+Peer::MsgCapacityTracker::getPeer()
+{
+    return mWeakPeer;
+}
+
+void
 Peer::sendHello()
 {
     ZoneScoped;
-    CLOG_DEBUG(Overlay, "Peer::sendHello to {} @{}", toString(),
-               mApp.getConfig().PEER_PORT);
+    CLOG_DEBUG(Overlay, "Peer::sendHello to {}", toString());
     DigitalBitsMessage msg;
     msg.type(HELLO);
     Hello& elo = msg.hello();
-    elo.ledgerVersion = mApp.getConfig().LEDGER_PROTOCOL_VERSION;
-    elo.overlayMinVersion = mApp.getConfig().OVERLAY_PROTOCOL_MIN_VERSION;
-    elo.overlayVersion = mApp.getConfig().OVERLAY_PROTOCOL_VERSION;
-    elo.versionStr = mApp.getConfig().VERSION_STR;
+    auto& cfg = mApp.getConfig();
+    elo.ledgerVersion = cfg.LEDGER_PROTOCOL_VERSION;
+    elo.overlayMinVersion = cfg.OVERLAY_PROTOCOL_MIN_VERSION;
+    elo.overlayVersion = cfg.OVERLAY_PROTOCOL_VERSION;
+    elo.versionStr = cfg.VERSION_STR;
     elo.networkID = mApp.getNetworkID();
-    elo.listeningPort = mApp.getConfig().PEER_PORT;
-    elo.peerID = mApp.getConfig().NODE_SEED.getPublicKey();
+    elo.listeningPort = cfg.PEER_PORT;
+    elo.peerID = cfg.NODE_SEED.getPublicKey();
     elo.cert = this->getAuthCert();
     elo.nonce = mSendNonce;
-    sendMessage(msg);
+
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(msg);
+    sendMessage(msgPtr);
 }
 
 AuthCert
@@ -169,6 +239,15 @@ Peer::recurrentTimerExpired(asio::error_code const& error)
             drop("idle timeout", Peer::DropDirection::WE_DROPPED_REMOTE,
                  Peer::DropMode::IGNORE_WRITE_QUEUE);
         }
+        else if (flowControlEnabled() == Peer::FlowControlState::ENABLED &&
+                 mNoOutboundCapacity &&
+                 (now - *mNoOutboundCapacity) >=
+                     Peer::PEER_SEND_MODE_IDLE_TIMEOUT)
+        {
+            drop("idle timeout (no new flood requests)",
+                 Peer::DropDirection::WE_DROPPED_REMOTE,
+                 Peer::DropMode::IGNORE_WRITE_QUEUE);
+        }
         else if (((now - mEnqueueTimeOfLastWrite) >= stragglerTimeout))
         {
             getOverlayMetrics().mTimeoutStraggler.Mark();
@@ -183,13 +262,46 @@ Peer::recurrentTimerExpired(asio::error_code const& error)
     }
 }
 
+Json::Value
+Peer::getFlowControlJsonInfo() const
+{
+    Json::Value res;
+    std::string stateStr;
+    bool reportCapacity = false;
+    switch (flowControlEnabled())
+    {
+    case Peer::FlowControlState::ENABLED:
+        stateStr = "enabled";
+        reportCapacity = true;
+        break;
+    case Peer::FlowControlState::DISABLED:
+        stateStr = "disabled";
+        break;
+    case Peer::FlowControlState::DONT_KNOW:
+        stateStr = "don't know";
+        break;
+    };
+
+    res["state"] = stateStr;
+    if (reportCapacity)
+    {
+        res["local_capacity"]["reading"] =
+            (Json::UInt64)mCapacity.mTotalCapacity;
+        res["local_capacity"]["flood"] = (Json::UInt64)mCapacity.mFloodCapacity;
+        res["peer_capacity"] = (Json::UInt64)mOutboundCapacity;
+    }
+
+    return res;
+}
+
 void
 Peer::sendAuth()
 {
     ZoneScoped;
     DigitalBitsMessage msg;
     msg.type(AUTH);
-    sendMessage(msg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(msg);
+    sendMessage(msgPtr);
 }
 
 std::string const&
@@ -209,8 +321,7 @@ Peer::connectHandler(asio::error_code const& error)
     }
     else
     {
-        CLOG_DEBUG(Overlay, "Connected to {} @{}", toString(),
-                   mApp.getConfig().PEER_PORT);
+        CLOG_DEBUG(Overlay, "Connected to {}", toString());
         connected();
         mState = CONNECTED;
         sendHello();
@@ -225,8 +336,8 @@ Peer::sendDontHave(MessageType type, uint256 const& itemID)
     msg.type(DONT_HAVE);
     msg.dontHave().reqHash = itemID;
     msg.dontHave().type = type;
-
-    sendMessage(msg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(msg);
+    sendMessage(msgPtr);
 }
 
 void
@@ -236,8 +347,8 @@ Peer::sendSCPQuorumSet(SCPQuorumSetPtr qSet)
     DigitalBitsMessage msg;
     msg.type(SCP_QUORUMSET);
     msg.qSet() = *qSet;
-
-    sendMessage(msg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(msg);
+    sendMessage(msgPtr);
 }
 
 void
@@ -248,7 +359,8 @@ Peer::sendGetTxSet(uint256 const& setID)
     newMsg.type(GET_TX_SET);
     newMsg.txSetHash() = setID;
 
-    sendMessage(newMsg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(newMsg);
+    sendMessage(msgPtr);
 }
 
 void
@@ -259,7 +371,8 @@ Peer::sendGetQuorumSet(uint256 const& setID)
     newMsg.type(GET_SCP_QUORUMSET);
     newMsg.qSetHash() = setID;
 
-    sendMessage(newMsg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(newMsg);
+    sendMessage(msgPtr);
 }
 
 void
@@ -268,8 +381,8 @@ Peer::sendGetPeers()
     ZoneScoped;
     DigitalBitsMessage newMsg;
     newMsg.type(GET_PEERS);
-
-    sendMessage(newMsg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(newMsg);
+    sendMessage(msgPtr);
 }
 
 void
@@ -279,8 +392,8 @@ Peer::sendGetScpState(uint32 ledgerSeq)
     DigitalBitsMessage newMsg;
     newMsg.type(GET_SCP_STATE);
     newMsg.getSCPLedgerSeq() = ledgerSeq;
-
-    sendMessage(newMsg);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(newMsg);
+    sendMessage(msgPtr);
 }
 
 void
@@ -294,7 +407,7 @@ Peer::sendPeers()
     // send top peers we know about
     auto peers = mApp.getOverlayManager().getPeerManager().getPeersToSend(
         maxPeerCount, mAddress);
-    assert(peers.size() <= maxPeerCount);
+    releaseAssert(peers.size() <= maxPeerCount);
 
     if (!peers.empty())
     {
@@ -303,7 +416,8 @@ Peer::sendPeers()
         {
             newMsg.peers().push_back(toXdr(address));
         }
-        sendMessage(newMsg);
+        auto msgPtr = std::make_shared<DigitalBitsMessage const>(newMsg);
+        sendMessage(msgPtr);
     }
 }
 
@@ -315,7 +429,8 @@ Peer::sendError(ErrorCode error, std::string const& message)
     m.type(ERROR_MSG);
     m.error().code = error;
     m.error().msg = message;
-    sendMessage(m);
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(m);
+    sendMessage(msgPtr);
 }
 
 void
@@ -339,15 +454,16 @@ Peer::msgSummary(DigitalBitsMessage const& msg)
     case AUTH:
         return "AUTH";
     case DONT_HAVE:
-        return fmt::format("DONTHAVE {}:{}", msg.dontHave().type,
+        return fmt::format(FMT_STRING("DONTHAVE {}:{}"), msg.dontHave().type,
                            hexAbbrev(msg.dontHave().reqHash));
     case GET_PEERS:
         return "GETPEERS";
     case PEERS:
-        return fmt::format("PEERS {}", msg.peers().size());
+        return fmt::format(FMT_STRING("PEERS {:d}"), msg.peers().size());
 
     case GET_TX_SET:
-        return fmt::format("GETTXSET {}", hexAbbrev(msg.txSetHash()));
+        return fmt::format(FMT_STRING("GETTXSET {}"),
+                           hexAbbrev(msg.txSetHash()));
     case TX_SET:
         return "TXSET";
 
@@ -355,7 +471,8 @@ Peer::msgSummary(DigitalBitsMessage const& msg)
         return "TRANSACTION";
 
     case GET_SCP_QUORUMSET:
-        return fmt::format("GET_SCP_QSET {}", hexAbbrev(msg.qSetHash()));
+        return fmt::format(FMT_STRING("GET_SCP_QSET {}"),
+                           hexAbbrev(msg.qSetHash()));
     case SCP_QUORUMSET:
         return "SCP_QSET";
     case SCP_MESSAGE:
@@ -379,29 +496,28 @@ Peer::msgSummary(DigitalBitsMessage const& msg)
             t = "unknown";
         }
         return fmt::format(
-            "{} ({})", t,
+            FMT_STRING("{} ({})"), t,
             mApp.getConfig().toShortString(msg.envelope().statement.nodeID));
     }
     case GET_SCP_STATE:
-        return fmt::format("GET_SCP_STATE {}", msg.getSCPLedgerSeq());
+        return fmt::format(FMT_STRING("GET_SCP_STATE {:d}"),
+                           msg.getSCPLedgerSeq());
 
     case SURVEY_REQUEST:
     case SURVEY_RESPONSE:
         return SurveyManager::getMsgSummary(msg);
+    case SEND_MORE:
+        return "SENDMORE";
     }
     return "UNKNOWN";
 }
 
 void
-Peer::sendMessage(DigitalBitsMessage const& msg, bool log)
+Peer::sendMessage(std::shared_ptr<DigitalBitsMessage const> msg, bool log)
 {
     ZoneScoped;
-    //    if (log && Logging::logTrace("Overlay"))
-    //    {
-    CLOG_TRACE(Overlay, "send: {} to : {} @{}", msgSummary(msg),
-               mApp.getConfig().toShortString(mPeerID),
-               mApp.getConfig().PEER_PORT);
-    //    }
+    CLOG_TRACE(Overlay, "send: {} to : {}", msgSummary(*msg),
+               mApp.getConfig().toShortString(mPeerID));
 
     // There are really _two_ layers of queues, one in Scheduler for actions and
     // one in Peer (and its subclasses) for outgoing writes. We enforce a
@@ -418,7 +534,7 @@ Peer::sendMessage(DigitalBitsMessage const& msg, bool log)
         return;
     }
 
-    switch (msg.type())
+    switch (msg->type())
     {
     case ERROR_MSG:
         getOverlayMetrics().mSendErrorMeter.Mark();
@@ -465,8 +581,33 @@ Peer::sendMessage(DigitalBitsMessage const& msg, bool log)
     case SURVEY_RESPONSE:
         getOverlayMetrics().mSendSurveyResponseMeter.Mark();
         break;
+    case SEND_MORE:
+        getOverlayMetrics().mSendSendMoreMeter.Mark();
+        break;
     };
 
+    if (mApp.getOverlayManager().isFloodMessage(*msg))
+    {
+        auto flowControl = flowControlEnabled();
+        if (flowControl == Peer::FlowControlState::DONT_KNOW)
+        {
+            // Drop any flood messages while flow control is being set
+            return;
+        }
+        else if (flowControl == Peer::FlowControlState::ENABLED)
+        {
+            addMsgAndMaybeTrimQueue(msg);
+            maybeSendNextBatch();
+            return;
+        }
+    }
+
+    sendAuthenticatedMessage(*msg);
+}
+
+void
+Peer::sendAuthenticatedMessage(DigitalBitsMessage const& msg)
+{
     AuthenticatedMessage amsg;
     amsg.v0().message = msg;
     if (msg.type() != HELLO && msg.type() != ERROR_MSG)
@@ -586,10 +727,65 @@ Peer::recvMessage(DigitalBitsMessage const& digitalbitsMsg)
     switch (digitalbitsMsg.type())
     {
     // group messages used during handshake, process those synchronously
-    case MessageType::HELLO:
-    case MessageType::AUTH:
+    case HELLO:
+    case AUTH:
         Peer::recvRawMessage(digitalbitsMsg);
         return;
+    case SEND_MORE:
+    {
+        if (mRemoteOverlayVersion < Peer::FIRST_VERSION_SUPPORTING_FLOW_CONTROL)
+        {
+            drop("Peer sent SEND_MORE that it doesn't support",
+                 Peer::DropDirection::WE_DROPPED_REMOTE,
+                 Peer::DropMode::IGNORE_WRITE_QUEUE);
+            return;
+        }
+
+        if (mApp.getConfig().OVERLAY_PROTOCOL_VERSION <
+            Peer::FIRST_VERSION_SUPPORTING_FLOW_CONTROL)
+        {
+            drop("does not support SEND_MORE",
+                 Peer::DropDirection::WE_DROPPED_REMOTE,
+                 Peer::DropMode::IGNORE_WRITE_QUEUE);
+            return;
+        }
+
+        cat = "CTRL";
+        // Set this once: peers aren't allowed to switch between modes
+        // Either set the flow control to "off" or continue processing the
+        // message and potentially send the next batch of items
+        if (mFlowControlState == Peer::FlowControlState::DONT_KNOW)
+        {
+            if (digitalbitsMsg.sendMoreMessage().numMessages == 0)
+            {
+                mFlowControlState = Peer::FlowControlState::DISABLED;
+                // Done with the message
+                return;
+            }
+            else
+            {
+                mFlowControlState = Peer::FlowControlState::ENABLED;
+            }
+        }
+
+        if (digitalbitsMsg.sendMoreMessage().numMessages >
+            UINT64_MAX - mOutboundCapacity)
+        {
+            drop("Peer capacity overflow",
+                 Peer::DropDirection::WE_DROPPED_REMOTE,
+                 Peer::DropMode::IGNORE_WRITE_QUEUE);
+            return;
+        }
+        mNoOutboundCapacity.reset();
+        if (mOutboundCapacity == 0 &&
+            digitalbitsMsg.sendMoreMessage().numMessages != 0)
+        {
+            CLOG_DEBUG(Overlay, "Got outbound capacity for peer {}",
+                       mApp.getConfig().toShortString(getPeerID()));
+        }
+        mOutboundCapacity += digitalbitsMsg.sendMoreMessage().numMessages;
+        break;
+    }
 
     // control messages
     case GET_PEERS:
@@ -624,38 +820,248 @@ Peer::recvMessage(DigitalBitsMessage const& digitalbitsMsg)
         cat = "MISC";
     }
 
-    std::weak_ptr<Peer> weak(static_pointer_cast<Peer>(shared_from_this()));
+    if (!mApp.getLedgerManager().isSynced() && digitalbitsMsg.type() == TRANSACTION)
+    {
+        // For transactions, exit early during the state rebuild, as we can't
+        // properly verify them
+        return;
+    }
+
+    auto self = shared_from_this();
+    std::weak_ptr<Peer> weak(static_pointer_cast<Peer>(self));
+
+    auto msgTracker = std::make_shared<MsgCapacityTracker>(weak, digitalbitsMsg);
+
     mApp.postOnMainThread(
-        [
-            weak, sm = DigitalBitsMessage(digitalbitsMsg), mtype = digitalbitsMsg.type(),
-            cat, port = mApp.getConfig().PEER_PORT
-        ]() {
-            auto self = weak.lock();
-            if (self)
+        [weak, msgTracker, cat, port = mApp.getConfig().PEER_PORT]() {
+            auto self = msgTracker->getPeer().lock();
+            if (!self)
             {
-                try
-                {
-                    self->recvRawMessage(sm);
-                }
-                catch (CryptoError const& e)
-                {
-                    std::string err =
-                        fmt::format("Error RecvMessage T:{} cat:{} {} @{}",
-                                    mtype, cat, self->toString(), port);
-                    CLOG_ERROR(Overlay, "Dropping connection with {}: {}", err,
-                               e.what());
-                    self->drop("Bad crypto request",
-                               Peer::DropDirection::WE_DROPPED_REMOTE,
-                               Peer::DropMode::IGNORE_WRITE_QUEUE);
-                }
+                CLOG_TRACE(Overlay, "Error RecvMessage T:{} cat:{}",
+                           msgTracker->getMessage().type(), cat);
+                return;
+            }
+
+            try
+            {
+                self->recvRawMessage(msgTracker->getMessage());
+            }
+            catch (CryptoError const& e)
+            {
+                std::string err = fmt::format(
+                    FMT_STRING("Error RecvMessage T:{} cat:{} {} @{:d}"),
+                    msgTracker->getMessage().type(), cat, self->toString(),
+                    port);
+                CLOG_ERROR(Overlay, "Dropping connection with {}: {}", err,
+                           e.what());
+                self->drop("Bad crypto request",
+                           Peer::DropDirection::WE_DROPPED_REMOTE,
+                           Peer::DropMode::IGNORE_WRITE_QUEUE);
+            }
+        },
+        fmt::format(FMT_STRING("{} recvMessage"), cat), type);
+}
+
+void
+Peer::sendSendMore(uint32_t numMessages)
+{
+    ZoneScoped;
+    DigitalBitsMessage m;
+    m.type(SEND_MORE);
+    m.sendMoreMessage().numMessages = numMessages;
+    auto msgPtr = std::make_shared<DigitalBitsMessage const>(m);
+    sendMessage(msgPtr);
+}
+
+void
+Peer::recvSendMore(DigitalBitsMessage const& msg)
+{
+    ZoneScoped;
+    // Flow control must be "on"
+    auto fc = flowControlEnabled();
+    releaseAssert(fc != Peer::FlowControlState::DONT_KNOW);
+
+    if (msg.sendMoreMessage().numMessages == 0)
+    {
+        drop("unexpected SEND_MORE message",
+             Peer::DropDirection::WE_DROPPED_REMOTE,
+             Peer::DropMode::IGNORE_WRITE_QUEUE);
+        return;
+    }
+
+    CLOG_TRACE(Overlay, "Peer {} sent SEND_MORE {}",
+               mApp.getConfig().toShortString(getPeerID()),
+               msg.sendMoreMessage().numMessages);
+
+    // SEND_MORE means we can free some capacity, and dump the next batch of
+    // messages onto the writing queue
+    if (fc == Peer::FlowControlState::ENABLED)
+    {
+        maybeSendNextBatch();
+    }
+}
+
+bool
+Peer::hasReadingCapacity() const
+{
+    return flowControlEnabled() != Peer::FlowControlState::ENABLED ||
+           mCapacity.mTotalCapacity > 0;
+}
+
+Peer::FlowControlState
+Peer::flowControlEnabled() const
+{
+    if (mFlowControlState == Peer::FlowControlState::DONT_KNOW)
+    {
+        return Peer::FlowControlState::DONT_KNOW;
+    }
+    if (mApp.getConfig().OVERLAY_PROTOCOL_VERSION <
+            Peer::FIRST_VERSION_SUPPORTING_FLOW_CONTROL ||
+        !mApp.getConfig().ENABLE_OVERLAY_FLOW_CONTROL)
+    {
+        return Peer::FlowControlState::DISABLED;
+    }
+    return mFlowControlState;
+}
+
+void
+Peer::addMsgAndMaybeTrimQueue(std::shared_ptr<DigitalBitsMessage const> msg)
+{
+    ZoneScoped;
+
+    releaseAssert(msg);
+    auto type = msg->type();
+    auto& queue = type == SCP_MESSAGE ? mOutboundQueues[0] : mOutboundQueues[1];
+    queue.emplace_back(QueuedOutboundMessage{msg, mApp.getClock().now()});
+
+    size_t dropped = 0;
+
+    if (type == TRANSACTION)
+    {
+        uint32_t limit = mApp.getLedgerManager().getLastMaxTxSetSizeOps();
+        if (queue.size() > limit)
+        {
+            dropped = queue.size() - limit;
+            queue.erase(queue.begin(), queue.begin() + dropped);
+        }
+    }
+    else if (type == SCP_MESSAGE)
+    {
+        // Iterate over the message queue. If we found any messages for slots we
+        // don't keep in-memory anymore, delete those. Otherwise, compare
+        // messages for the same slot and validator against the latest SCP
+        // message and drop
+        auto minSlotToRemember = mApp.getHerder().getMinLedgerSeqToRemember();
+        bool valueReplaced = false;
+
+        for (auto it = queue.begin(); it != queue.end();)
+        {
+            if (it->mMessage->envelope().statement.slotIndex <
+                minSlotToRemember)
+            {
+                it = queue.erase(it);
+                dropped++;
+            }
+            else if (!valueReplaced && it != queue.end() - 1 &&
+                     mApp.getHerder().isNewerNominationOrBallotSt(
+                         it->mMessage->envelope().statement,
+                         queue.back().mMessage->envelope().statement))
+            {
+                valueReplaced = true;
+                *it = std::move(queue.back());
+                queue.pop_back();
+                dropped++;
+                ++it;
             }
             else
             {
-                CLOG_TRACE(Overlay, "Error RecvMessage T:{} cat:{}", mtype,
-                           cat);
+                ++it;
             }
-        },
-        fmt::format("{} recvMessage", cat), type);
+        }
+    }
+
+    if (dropped && Logging::logTrace("Overlay"))
+    {
+        CLOG_TRACE(Overlay, "Dropped {} {} messages to peer {}", dropped,
+                   (type == TRANSACTION ? "tx" : "SCP"),
+                   mApp.getConfig().toShortString(getPeerID()));
+    }
+}
+
+void
+Peer::maybeSendNextBatch()
+{
+    ZoneScoped;
+
+    releaseAssert(flowControlEnabled() == Peer::FlowControlState::ENABLED);
+
+    auto oldOutboundCapacity = mOutboundCapacity;
+    for (int i = 0; i < mOutboundQueues.size(); i++)
+    {
+        auto& queue = mOutboundQueues[i];
+        while (!queue.empty() && mOutboundCapacity > 0)
+        {
+            auto& front = queue.front();
+            sendAuthenticatedMessage(*(front.mMessage));
+            auto& om = mApp.getOverlayManager().getOverlayMetrics();
+            auto& timer = front.mMessage->type() == SCP_MESSAGE
+                              ? om.mOutboundQueueDelaySCP
+                              : om.mOutboundQueueDelayTxs;
+            timer.Update(mApp.getClock().now() - front.mTimeEmplaced);
+            mOutboundCapacity--;
+            if (mOutboundCapacity == 0)
+            {
+                CLOG_DEBUG(Overlay, "No outbound capacity for peer {}",
+                           mApp.getConfig().toShortString(getPeerID()));
+                mNoOutboundCapacity =
+                    std::make_optional<VirtualClock::time_point>(
+                        mApp.getClock().now());
+            }
+            queue.pop_front();
+        }
+    }
+
+    CLOG_TRACE(Overlay, "Peer {}: send next flood batch of {}",
+               mApp.getConfig().toShortString(getPeerID()),
+               (oldOutboundCapacity - mOutboundCapacity));
+}
+
+void
+Peer::endMessageProcessing(DigitalBitsMessage const& msg)
+{
+    if (shouldAbort() ||
+        flowControlEnabled() != Peer::FlowControlState::ENABLED)
+    {
+        return;
+    }
+
+    mCapacity.mTotalCapacity++;
+    if (mApp.getOverlayManager().isFloodMessage(msg))
+    {
+        if (mCapacity.mFloodCapacity == 0)
+        {
+            CLOG_DEBUG(Overlay, "Got flood capacity for peer {}",
+                       mApp.getConfig().toShortString(getPeerID()));
+        }
+        mCapacity.mFloodCapacity++;
+        mFloodMsgsProcessed++;
+
+        if (mFloodMsgsProcessed ==
+            mApp.getConfig().FLOW_CONTROL_SEND_MORE_BATCH_SIZE)
+        {
+            sendSendMore(mApp.getConfig().FLOW_CONTROL_SEND_MORE_BATCH_SIZE);
+            mFloodMsgsProcessed = 0;
+        }
+    }
+
+    // Got some capacity back, can schedule more reads now
+    if (mIsPeerThrottled)
+    {
+        CLOG_DEBUG(Overlay, "Stop throttling reading from peer {}",
+                   mApp.getConfig().toShortString(getPeerID()));
+        mIsPeerThrottled = false;
+        scheduleRead();
+    }
 }
 
 void
@@ -673,15 +1079,15 @@ Peer::recvRawMessage(DigitalBitsMessage const& digitalbitsMsg)
     if (!isAuthenticated() && (digitalbitsMsg.type() != HELLO) &&
         (digitalbitsMsg.type() != AUTH) && (digitalbitsMsg.type() != ERROR_MSG))
     {
-        drop(fmt::format("received {} before completed handshake",
+        drop(fmt::format(FMT_STRING("received {} before completed handshake"),
                          digitalbitsMsg.type()),
              Peer::DropDirection::WE_DROPPED_REMOTE,
              Peer::DropMode::IGNORE_WRITE_QUEUE);
         return;
     }
 
-    assert(isAuthenticated() || digitalbitsMsg.type() == HELLO ||
-           digitalbitsMsg.type() == AUTH || digitalbitsMsg.type() == ERROR_MSG);
+    releaseAssert(isAuthenticated() || digitalbitsMsg.type() == HELLO ||
+                  digitalbitsMsg.type() == AUTH || digitalbitsMsg.type() == ERROR_MSG);
     mApp.getOverlayManager().recordMessageMetric(digitalbitsMsg,
                                                  shared_from_this());
 
@@ -791,6 +1197,12 @@ Peer::recvRawMessage(DigitalBitsMessage const& digitalbitsMsg)
         recvGetSCPState(digitalbitsMsg);
     }
     break;
+    case SEND_MORE:
+    {
+        auto t = getOverlayMetrics().mRecvSendMoreTimer.TimeScope();
+        recvSendMore(digitalbitsMsg);
+    }
+    break;
     }
 }
 
@@ -814,8 +1226,8 @@ Peer::recvGetTxSet(DigitalBitsMessage const& msg)
         DigitalBitsMessage newMsg;
         newMsg.type(TX_SET);
         txSet->toXDR(newMsg.txSet());
-
-        self->sendMessage(newMsg);
+        auto newMsgPtr = std::make_shared<DigitalBitsMessage const>(newMsg);
+        self->sendMessage(newMsgPtr);
     }
     else
     {
@@ -839,21 +1251,20 @@ Peer::recvTransaction(DigitalBitsMessage const& msg)
         mApp.getNetworkID(), msg.transaction());
     if (transaction)
     {
+        // record that this peer sent us this transaction
+        // add it to the floodmap so that this peer gets credit for it
+        Hash msgID;
+        mApp.getOverlayManager().recvFloodedMsgID(msg, shared_from_this(),
+                                                  msgID);
+
         // add it to our current set
         // and make sure it is valid
         auto recvRes = mApp.getHerder().recvTransaction(transaction);
 
-        if (recvRes == TransactionQueue::AddResult::ADD_STATUS_PENDING ||
-            recvRes == TransactionQueue::AddResult::ADD_STATUS_DUPLICATE)
+        if (!(recvRes == TransactionQueue::AddResult::ADD_STATUS_PENDING ||
+              recvRes == TransactionQueue::AddResult::ADD_STATUS_DUPLICATE))
         {
-            // record that this peer sent us this transaction
-            mApp.getOverlayManager().recvFloodedMsg(msg, shared_from_this());
-
-            if (recvRes == TransactionQueue::AddResult::ADD_STATUS_PENDING)
-            {
-                // if it's a new transaction, broadcast it
-                mApp.getOverlayManager().broadcastMessage(msg);
-            }
+            mApp.getOverlayManager().forgetFloodedMsg(msgID);
         }
     }
 }
@@ -864,7 +1275,7 @@ Peer::pingIDfromTimePoint(VirtualClock::time_point const& tp)
     auto sh = shortHash::xdrComputeHash(
         xdr::xdr_to_opaque(uint64_t(tp.time_since_epoch().count())));
     Hash res;
-    assert(res.size() >= sizeof(sh));
+    releaseAssert(res.size() >= sizeof(sh));
     std::memcpy(res.data(), &sh, sizeof(sh));
     return res;
 }
@@ -908,7 +1319,6 @@ void
 Peer::recvGetSCPQuorumSet(DigitalBitsMessage const& msg)
 {
     ZoneScoped;
-    maybeProcessPingResponse(msg.qSetHash());
 
     SCPQuorumSetPtr qset = mApp.getHerder().getQSet(msg.qSetHash());
 
@@ -918,8 +1328,7 @@ Peer::recvGetSCPQuorumSet(DigitalBitsMessage const& msg)
     }
     else
     {
-        if (Logging::logTrace("Overlay"))
-            CLOG_TRACE(Overlay, "No quorum set: {}", hexAbbrev(msg.qSetHash()));
+        CLOG_TRACE(Overlay, "No quorum set: {}", hexAbbrev(msg.qSetHash()));
         sendDontHave(SCP_QUORUMSET, msg.qSetHash());
         // do we want to ask other people for it?
     }
@@ -929,6 +1338,7 @@ Peer::recvSCPQuorumSet(DigitalBitsMessage const& msg)
 {
     ZoneScoped;
     Hash hash = xdrSha256(msg.qSet());
+    maybeProcessPingResponse(hash);
     mApp.getHerder().recvSCPQuorumSet(hash, msg.qSet());
 }
 
@@ -1019,7 +1429,7 @@ Peer::recvError(DigitalBitsMessage const& msg)
                    std::back_inserter(msgStr),
                    [](char c) { return (isalnum(c) || c == ' ') ? c : '*'; });
 
-    drop(fmt::format("{} ({})", codeStr, msgStr),
+    drop(fmt::format(FMT_STRING("{} ({})"), codeStr, msgStr),
          Peer::DropDirection::REMOTE_DROPPED_US,
          Peer::DropMode::IGNORE_WRITE_QUEUE);
 }
@@ -1027,7 +1437,7 @@ Peer::recvError(DigitalBitsMessage const& msg)
 void
 Peer::updatePeerRecordAfterEcho()
 {
-    assert(!getAddress().isEmpty());
+    releaseAssert(!getAddress().isEmpty());
 
     auto type = mApp.getOverlayManager().isPreferred(this)
                     ? PeerType::PREFERRED
@@ -1043,7 +1453,7 @@ Peer::updatePeerRecordAfterEcho()
 void
 Peer::updatePeerRecordAfterAuthentication()
 {
-    assert(!getAddress().isEmpty());
+    releaseAssert(!getAddress().isEmpty());
 
     if (mRole == WE_CALLED_REMOTE)
     {
@@ -1109,8 +1519,7 @@ Peer::recvHello(Hello const& elo)
     mAddress =
         PeerBareAddress{ip, static_cast<unsigned short>(elo.listeningPort)};
 
-    CLOG_DEBUG(Overlay, "recvHello from {} @{}", toString(),
-               mApp.getConfig().PEER_PORT);
+    CLOG_DEBUG(Overlay, "recvHello from {}", toString());
 
     auto dropMode = Peer::DropMode::IGNORE_WRITE_QUEUE;
     if (mRole == REMOTE_CALLED_US)
@@ -1236,6 +1645,28 @@ Peer::recvAuth(DigitalBitsMessage const& msg)
         return;
     }
 
+    // Subtle: after successful auth, must send sendMore message first to tell
+    // the other peer if this node prefers to flow control the traffic or not
+    if (mRemoteOverlayVersion >= Peer::FIRST_VERSION_SUPPORTING_FLOW_CONTROL &&
+        mApp.getConfig().OVERLAY_PROTOCOL_VERSION >=
+            Peer::FIRST_VERSION_SUPPORTING_FLOW_CONTROL)
+    {
+        if (mApp.getConfig().ENABLE_OVERLAY_FLOW_CONTROL)
+        {
+            sendSendMore(mApp.getConfig().PEER_FLOOD_READING_CAPACITY);
+        }
+        else
+        {
+            // 0 indicates peer doesn't want to use flow control
+            sendSendMore(0);
+        }
+    }
+    else
+    {
+        mFlowControlState = Peer::FlowControlState::DISABLED;
+    }
+
+    // Ask for SCP data _after_ the flow control message
     auto low = mApp.getHerder().getMinLedgerSeqToAskPeers();
     sendGetScpState(low);
 }
@@ -1266,7 +1697,7 @@ Peer::recvPeers(DigitalBitsMessage const& msg)
             continue;
         }
 
-        assert(peer.ip.type() == IPv4);
+        releaseAssert(peer.ip.type() == IPv4);
         auto address = PeerBareAddress{peer};
 
         if (address.isPrivate())

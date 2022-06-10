@@ -7,6 +7,7 @@
 #include "TxSetFrame.h"
 #include "main/Config.h"
 #include "overlay/DigitalBitsXDR.h"
+#include <optional>
 #include <string>
 
 namespace digitalbits
@@ -22,9 +23,10 @@ namespace digitalbits
 class LedgerCloseData
 {
   public:
-    LedgerCloseData(uint32_t ledgerSeq,
-                    std::shared_ptr<AbstractTxSetFrameForApply> txSet,
-                    DigitalBitsValue const& v);
+    LedgerCloseData(
+        uint32_t ledgerSeq, std::shared_ptr<AbstractTxSetFrameForApply> txSet,
+        DigitalBitsValue const& v,
+        std::optional<Hash> const& expectedLedgerHash = std::nullopt);
 
     uint32_t
     getLedgerSeq() const
@@ -41,11 +43,17 @@ class LedgerCloseData
     {
         return mValue;
     }
+    std::optional<Hash> const&
+    getExpectedHash() const
+    {
+        return mExpectedLedgerHash;
+    }
 
   private:
     uint32_t mLedgerSeq;
     std::shared_ptr<AbstractTxSetFrameForApply> mTxSet;
     DigitalBitsValue mValue;
+    std::optional<Hash> mExpectedLedgerHash;
 };
 
 std::string digitalbitsValueToString(Config const& c, DigitalBitsValue const& sv);

@@ -38,13 +38,8 @@ TEST_CASE("PendingEnvelopes recvSCPEnvelope", "[herder]")
     using TxPair = std::pair<Value, TxSetFramePtr>;
     auto makeTxPair = [&](TxSetFramePtr txSet, uint64_t closeTime) {
         txSet->sortForHash();
-        auto sv = DigitalBitsValue{txSet->getContentsHash(), closeTime,
-                               emptyUpgradeSteps, DIGITALBITS_VALUE_BASIC};
-        if (herder.getHerderSCPDriver().compositeValueType() ==
-            DIGITALBITS_VALUE_SIGNED)
-        {
-            herder.signDigitalBitsValue(s, sv);
-        }
+        DigitalBitsValue sv = herder.makeDigitalBitsValue(
+            txSet->getContentsHash(), closeTime, emptyUpgradeSteps, s);
         auto v = xdr::xdr_to_opaque(sv);
 
         return TxPair{v, txSet};

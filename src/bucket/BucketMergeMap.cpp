@@ -1,5 +1,6 @@
 #include "bucket/BucketMergeMap.h"
 #include "crypto/Hex.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include <Tracy.hpp>
 
@@ -50,7 +51,7 @@ BucketMergeMap::forgetAllMergesProducing(Hash const& outputBeingDropped)
     {
         auto const& output = mergeProducingOutput->first;
         auto const& mergeKeyProducingOutput = mergeProducingOutput->second;
-        assert(output == outputBeingDropped);
+        releaseAssert(output == outputBeingDropped);
         ret.emplace(mergeKeyProducingOutput);
 
         // It's possible for the same output to occur for multiple

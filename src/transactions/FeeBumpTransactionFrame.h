@@ -75,6 +75,7 @@ class FeeBumpTransactionFrame : public TransactionFrameBase
     Hash const& getInnerFullHash() const;
 
     uint32_t getNumOperations() const override;
+    std::vector<Operation> const& getRawOperations() const override;
 
     TransactionResult& getResult() override;
     TransactionResultCode getResultCode() const override;
@@ -87,7 +88,7 @@ class FeeBumpTransactionFrame : public TransactionFrameBase
     insertKeysForFeeProcessing(UnorderedSet<LedgerKey>& keys) const override;
     void insertKeysForTxApply(UnorderedSet<LedgerKey>& keys) const override;
 
-    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID) override;
+    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee) override;
 
     DigitalBitsMessage toDigitalBitsMessage() const override;
 

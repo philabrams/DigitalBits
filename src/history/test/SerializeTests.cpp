@@ -5,12 +5,10 @@
 #include "history/HistoryArchive.h"
 #include "lib/catch.hpp"
 
-#include <filesystem>
 #include <fstream>
 #include <string>
 
 using namespace digitalbits;
-namespace fs = std::filesystem;
 
 TEST_CASE("Serialization round trip", "[history]")
 {
@@ -18,18 +16,9 @@ TEST_CASE("Serialization round trip", "[history]")
         "digitalbits-history.testnet.6714239.json",
         "digitalbits-history.livenet.15686975.json",
         "digitalbits-history.testnet.6714239.networkPassphrase.json"};
-    for (int i = 0; i < testFiles.size(); i++)
+    for (size_t i = 0; i < testFiles.size(); i++)
     {
-        fs::path cwd = fs::current_path();
-
-        std::string fnPath = "";
-
-        if (cwd.filename() != "src") {
-            fnPath = "src/testdata/";
-        } else {
-            fnPath = "testdata/";
-        }
-
+        std::string fnPath = "testdata/";
         std::string testFilePath = fnPath + testFiles[i];
         SECTION("Serialize " + testFilePath)
         {

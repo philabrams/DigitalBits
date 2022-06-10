@@ -103,8 +103,8 @@ curve25519Decrypt(Curve25519Secret const& localSecret,
 namespace std
 {
 size_t
-hash<digitalbits::Curve25519Public>::
-operator()(digitalbits::Curve25519Public const& k) const noexcept
+hash<digitalbits::Curve25519Public>::operator()(
+    digitalbits::Curve25519Public const& k) const noexcept
 {
     return std::hash<digitalbits::uint256>()(k.key);
 }

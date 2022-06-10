@@ -5,26 +5,26 @@
 #include "main/CommandLine.h"
 #include "bucket/BucketManager.h"
 #include "catchup/CatchupConfiguration.h"
+#include "catchup/CatchupRange.h"
 #include "herder/Herder.h"
 #include "history/HistoryArchiveManager.h"
-#include "history/InferredQuorumUtils.h"
+#include "historywork/BatchDownloadWork.h"
+#include "historywork/WriteVerifiedCheckpointHashesWork.h"
 #include "ledger/LedgerManager.h"
 #include "main/Application.h"
 #include "main/ApplicationUtils.h"
 #include "main/Config.h"
+#include "main/Diagnostics.h"
 #include "main/ErrorMessages.h"
+#include "main/PersistentState.h"
 #include "main/DigitalBitsCoreVersion.h"
 #include "main/dumpxdr.h"
 #include "overlay/OverlayManager.h"
 #include "scp/QuorumSetUtils.h"
-#include "util/Logging.h"
-#include "util/optional.h"
-#include "util/types.h"
-
-#include "historywork/BatchDownloadWork.h"
-#include "historywork/WriteVerifiedCheckpointHashesWork.h"
 #include "src/catchup/simulation/TxSimApplyTransactionsWork.h"
 #include "src/transactions/simulation/TxSimScaleBucketlistWork.h"
+#include "util/Logging.h"
+#include "util/types.h"
 #include "work/WorkScheduler.h"
 
 #ifdef BUILD_TESTS
@@ -36,9 +36,12 @@
 #include <fmt/format.h>
 #include <iostream>
 #include <lib/clara.hpp>
+#include <optional>
 
 namespace digitalbits
 {
+
+static const uint32_t MAINTENANCE_LEDGER_COUNT = 1000000;
 
 void
 writeWithTextFlow(std::ostream& os, std::string const& text)
@@ -58,7 +61,7 @@ class CommandLine
         using Common = std::pair<std::string, bool>;
         static const std::vector<Common> COMMON_OPTIONS;
 
-        el::Level mLogLevel{el::Level::Info};
+        LogLevel mLogLevel{LogLevel::LVL_INFO};
         std::vector<std::string> mMetrics;
         std::string mConfigFile;
 
@@ -87,7 +90,7 @@ class CommandLine
     using AdjustedCommandLine =
         std::pair<std::string, std::vector<std::string>>;
     AdjustedCommandLine adjustCommandLine(clara::detail::Args const& args);
-    optional<Command> selectCommand(std::string const& commandName);
+    std::optional<Command> selectCommand(std::string const& commandName);
     void writeToStream(std::string const& exeName, std::ostream& os) const;
 
   private:
@@ -103,24 +106,25 @@ const std::vector<std::pair<std::string, bool>>
 class ParserWithValidation
 {
   public:
-    ParserWithValidation(clara::Parser parser,
-                         std::function<std::string()> isValid = [] {
-                             return std::string{};
-                         })
+    ParserWithValidation(
+        clara::Parser parser,
+        std::function<std::string()> isValid = [] { return std::string{}; })
     {
         mParser = parser;
         mIsValid = isValid;
     }
 
-    ParserWithValidation(clara::Arg arg, std::function<std::string()> isValid =
-                                             [] { return std::string{}; })
+    ParserWithValidation(
+        clara::Arg arg,
+        std::function<std::string()> isValid = [] { return std::string{}; })
     {
         mParser = clara::Parser{} | arg;
         mIsValid = isValid;
     }
 
-    ParserWithValidation(clara::Opt opt, std::function<std::string()> isValid =
-                                             [] { return std::string{}; })
+    ParserWithValidation(
+        clara::Opt opt,
+        std::function<std::string()> isValid = [] { return std::string{}; })
     {
         mParser = clara::Parser{} | opt;
         mIsValid = isValid;
@@ -186,7 +190,13 @@ outputFileParser(std::string& string)
 }
 
 clara::Opt
-logLevelParser(el::Level& value)
+outputDirParser(std::string& string)
+{
+    return clara::Opt{string, "DIR-NAME"}["--output-dir"]("output dir");
+}
+
+clara::Opt
+logLevelParser(LogLevel& value)
 {
     return clara::Opt{
         [&](std::string const& arg) { value = Logging::getLLfromString(arg); },
@@ -209,7 +219,19 @@ compactParser(bool& compact)
 clara::Opt
 base64Parser(bool& base64)
 {
-    return clara::Opt{base64}["--base64"]("use base64");
+    return clara::Opt{base64}["--base64"]("batch process base64 encoded input");
+}
+
+clara::Opt
+codeParser(std::string& code)
+{
+    return clara::Opt{code, "CODE"}["--code"]("asset code");
+}
+
+clara::Opt
+issuerParser(std::string& issuer)
+{
+    return clara::Opt{issuer, "ISSUER"}["--issuer"]("asset issuer");
 }
 
 clara::Opt
@@ -253,10 +275,11 @@ configurationParser(CommandLine::ConfigOption& configOption)
 {
     return logLevelParser(configOption.mLogLevel) |
            metricsParser(configOption.mMetrics) |
-           clara::Opt{configOption.mConfigFile, "FILE-NAME"}["--conf"](
-               fmt::format("specify a config file ('{0}' for STDIN, default "
-                           "'digitalbits-core.cfg')",
-                           Config::STDIN_SPECIAL_NAME));
+           clara::Opt{configOption.mConfigFile,
+                      "FILE-NAME"}["--conf"](fmt::format(
+               FMT_STRING("specify a config file ('{}' for STDIN, default "
+                          "'digitalbits-core.cfg')"),
+               Config::STDIN_SPECIAL_NAME));
 }
 
 clara::Opt
@@ -281,11 +304,11 @@ maybeSetMetadataOutputStream(Config& cfg, std::string const& stream)
     }
 }
 
-optional<CatchupConfiguration>
-maybeEnableInMemoryLedgerMode(Config& config, bool inMemory,
-                              uint32_t startAtLedger,
-                              std::string const& startAtHash)
+void
+maybeEnableInMemoryMode(Config& config, bool inMemory, uint32_t startAtLedger,
+                        std::string const& startAtHash, bool persistMinimalData)
 {
+    // First, ensure user parameters are valid
     if (!inMemory)
     {
         if (startAtLedger != 0)
@@ -296,18 +319,8 @@ maybeEnableInMemoryLedgerMode(Config& config, bool inMemory,
         {
             throw std::runtime_error("--start-at-hash requires --in-memory");
         }
-        return nullptr;
+        return;
     }
-
-    // Adjust configs for in-memory-replay mode
-    config.DATABASE = SecretValue{"sqlite3://:memory:"};
-    config.MODE_STORES_HISTORY = false;
-    config.MODE_USES_IN_MEMORY_LEDGER = true;
-    config.MODE_ENABLES_BUCKETLIST = true;
-    // And don't bother fsyncing buckets without a DB,
-    // they're temporary anyways.
-    config.DISABLE_XDR_FSYNC = true;
-
     if (startAtLedger != 0 && startAtHash.empty())
     {
         throw std::runtime_error("--start-at-ledger requires --start-at-hash");
@@ -316,17 +329,27 @@ maybeEnableInMemoryLedgerMode(Config& config, bool inMemory,
     {
         throw std::runtime_error("--start-at-hash requires --start-at-ledger");
     }
-    else if (startAtLedger != 0 && !startAtHash.empty())
+
+    // Adjust configs for live in-memory-replay mode
+    config.setInMemoryMode();
+
+    if (startAtLedger != 0 && !startAtHash.empty())
     {
         config.MODE_AUTO_STARTS_OVERLAY = false;
-        LedgerNumHashPair pair;
-        pair.first = startAtLedger;
-        pair.second = digitalbits::make_optional<Hash>(hexToBin256(startAtHash));
-        uint32_t count = 0;
-        auto mode = CatchupConfiguration::Mode::OFFLINE_COMPLETE;
-        return digitalbits::make_optional<CatchupConfiguration>(pair, count, mode);
     }
-    return nullptr;
+
+    // Set database to a small sqlite database used to store minimal data needed
+    // to restore the ledger state
+    if (persistMinimalData)
+    {
+        config.DATABASE = SecretValue{minimalDBForInMemoryMode(config)};
+        config.MODE_STORES_HISTORY_LEDGERHEADERS = true;
+        // Since this mode stores historical data (needed to restore
+        // ledger state in certain scenarios), set maintenance to run
+        // aggressively so that we only store a few ledgers worth of data
+        config.AUTOMATIC_MAINTENANCE_PERIOD = std::chrono::seconds(30);
+        config.AUTOMATIC_MAINTENANCE_COUNT = MAINTENANCE_LEDGER_COUNT;
+    }
 }
 
 clara::Opt
@@ -454,10 +477,9 @@ CommandLine::ConfigOption::getConfig(bool logToFile) const
     auto configFile =
         mConfigFile.empty() ? std::string{"digitalbits-core.cfg"} : mConfigFile;
 
-    LOG_INFO(DEFAULT_LOG, "Config from {}", configFile);
-
     // yes you really have to do this 3 times
     Logging::setLogLevel(mLogLevel, nullptr);
+    LOG_INFO(DEFAULT_LOG, "Config from {}", configFile);
     config.load(configFile);
 
     Logging::setFmt(KeyUtils::toShortString(config.NODE_SEED.getPublicKey()));
@@ -536,7 +558,7 @@ CommandLine::adjustCommandLine(clara::detail::Args const& args)
     return CommandLine::AdjustedCommandLine{command, remainingTokens};
 }
 
-optional<CommandLine::Command>
+std::optional<CommandLine::Command>
 CommandLine::selectCommand(std::string const& commandName)
 {
     auto command = std::find_if(
@@ -544,7 +566,7 @@ CommandLine::selectCommand(std::string const& commandName)
         [&](Command const& command) { return command.name() == commandName; });
     if (command != std::end(mCommands))
     {
-        return digitalbits::make_optional<Command>(*command);
+        return std::make_optional<Command>(*command);
     }
 
     command = std::find_if(
@@ -552,9 +574,9 @@ CommandLine::selectCommand(std::string const& commandName)
         [&](Command const& command) { return command.name() == "help"; });
     if (command != std::end(mCommands))
     {
-        return digitalbits::make_optional<Command>(*command);
+        return std::make_optional<Command>(*command);
     }
-    return nullopt<Command>();
+    return std::nullopt;
 }
 
 void
@@ -586,6 +608,23 @@ CommandLine::writeToStream(std::string const& exeName, std::ostream& os) const
 }
 
 int
+diagBucketStats(CommandLineArgs const& args)
+{
+    std::string bucketFile;
+    bool aggAccountStats = false;
+
+    return runWithHelp(
+        args,
+        {fileNameParser(bucketFile),
+         clara::Opt{aggAccountStats}["--aggregate-account-stats"](
+             "aggregate entries on a per account basis")},
+        [&] {
+            diagnostics::bucketStats(bucketFile, aggAccountStats);
+            return 0;
+        });
+}
+
+int
 runCatchup(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
@@ -594,8 +633,8 @@ runCatchup(CommandLineArgs const& args)
     std::string archive;
     std::string trustedCheckpointHashesFile;
     bool completeValidation = false;
-    bool replayInMemory = false;
     bool inMemory = false;
+    bool forceBack = false;
     uint32_t startAtLedger = 0;
     std::string startAtHash;
     std::string stream;
@@ -643,9 +682,10 @@ runCatchup(CommandLineArgs const& args)
             "verify all files from the archive for the catchup range");
     };
 
-    auto replayInMemoryParser = [](bool& replayInMemory) {
-        return clara::Opt{replayInMemory}["--replay-in-memory"](
-            "deprecated: use --in-memory flag, common to 'catchup' and 'run'");
+    auto forceBackParser = [](bool& forceBackClean) {
+        return clara::Opt{forceBackClean}["--force-back"](
+            "force ledger state to a previous state, preserving older "
+            "historical data");
     };
 
     return runWithHelp(
@@ -654,10 +694,9 @@ runCatchup(CommandLineArgs const& args)
          catchupArchiveParser,
          trustedCheckpointHashesParser(trustedCheckpointHashesFile),
          outputFileParser(outputFile), disableBucketGCParser(disableBucketGC),
-         validationParser(completeValidation),
-         replayInMemoryParser(replayInMemory), inMemoryParser(inMemory),
+         validationParser(completeValidation), inMemoryParser(inMemory),
          startAtLedgerParser(startAtLedger), startAtHashParser(startAtHash),
-         metadataOutputStreamParser(stream)},
+         metadataOutputStreamParser(stream), forceBackParser(forceBack)},
         [&] {
             auto config = configOption.getConfig();
             // Don't call config.setNoListen() here as we might want to
@@ -674,17 +713,18 @@ runCatchup(CommandLineArgs const& args)
                 // bulk catchup, otherwise the DB is likely to overflow with
                 // unwanted history.
                 config.AUTOMATIC_MAINTENANCE_PERIOD = std::chrono::seconds{30};
-                config.AUTOMATIC_MAINTENANCE_COUNT = 1000000;
+                config.AUTOMATIC_MAINTENANCE_COUNT = MAINTENANCE_LEDGER_COUNT;
             }
 
-            maybeEnableInMemoryLedgerMode(config, (inMemory || replayInMemory),
-                                          startAtLedger, startAtHash);
+            maybeEnableInMemoryMode(config, inMemory, startAtLedger,
+                                    startAtHash,
+                                    /* persistMinimalData */ false);
             maybeSetMetadataOutputStream(config, stream);
 
             VirtualClock clock(VirtualClock::REAL_TIME);
             int result;
             {
-                auto app = Application::create(clock, config, replayInMemory);
+                auto app = Application::create(clock, config, inMemory);
                 auto const& ham = app->getHistoryArchiveManager();
                 auto archivePtr = ham.getHistoryArchive(archive);
                 if (iequals(archive, "any"))
@@ -713,10 +753,52 @@ runCatchup(CommandLineArgs const& args)
                     }
                     LedgerNumHashPair pair;
                     pair.first = cc.toLedger();
-                    pair.second = digitalbits::make_optional<Hash>(h);
+                    pair.second = std::make_optional<Hash>(h);
                     LOG_INFO(DEFAULT_LOG, "Found trusted hash {} for ledger {}",
                              hexAbbrev(h), cc.toLedger());
                     cc = CatchupConfiguration(pair, cc.count(), cc.mode());
+                }
+
+                if (forceBack)
+                {
+                    CatchupRange range(LedgerManager::GENESIS_LEDGER_SEQ, cc,
+                                       app->getHistoryManager());
+                    LOG_INFO(DEFAULT_LOG, "Force applying range {}-{}",
+                             range.first(), range.last());
+                    if (!range.applyBuckets())
+                    {
+                        throw std::runtime_error(
+                            "force can only be used when buckets get applied");
+                    }
+                    // by dropping persistent state, we ensure that we don't
+                    // leave the database in some half-reset state until
+                    // startNewLedger completes later on
+                    {
+                        auto& ps = app->getPersistentState();
+                        ps.setState(PersistentState::kLastClosedLedger, "");
+                        ps.setState(PersistentState::kHistoryArchiveState, "");
+                        ps.setState(PersistentState::kLastSCPData, "");
+                        ps.setState(PersistentState::kLedgerUpgrades, "");
+                    }
+
+                    LOG_INFO(
+                        DEFAULT_LOG,
+                        "Cleaning historical data (this may take a while)");
+                    auto& lm = app->getLedgerManager();
+                    lm.deleteNewerEntries(app->getDatabase(), range.first());
+                    // checkpoints
+                    app->getHistoryManager().deleteCheckpointsNewerThan(
+                        range.first());
+
+                    // need to delete genesis ledger data (so that we can reset
+                    // to it)
+                    lm.deleteOldEntries(app->getDatabase(),
+                                        LedgerManager::GENESIS_LEDGER_SEQ, 1);
+                    LOG_INFO(
+                        DEFAULT_LOG,
+                        "Resetting ledger state to genesis before catching up");
+                    app->resetLedgerState();
+                    lm.startNewLedger();
                 }
 
                 Json::Value catchupInfo;
@@ -746,20 +828,6 @@ runPublish(CommandLineArgs const& args)
 }
 
 int
-runCheckQuorum(CommandLineArgs const& args)
-{
-    CommandLine::ConfigOption configOption;
-    uint32_t ledgerNum = 0;
-    return runWithHelp(
-        args,
-        {configurationParser(configOption), historyLedgerNumber(ledgerNum)},
-        [&] {
-            checkQuorumIntersection(configOption.getConfig(), ledgerNum);
-            return 0;
-        });
-}
-
-int
 runWriteVerifiedCheckpointHashes(CommandLineArgs const& args)
 {
     std::string outputFile;
@@ -776,18 +844,13 @@ runWriteVerifiedCheckpointHashes(CommandLineArgs const& args)
 
             // Set up for quick in-memory no-catchup mode.
             cfg.QUORUM_INTERSECTION_CHECKER = false;
-            cfg.DATABASE = SecretValue{"sqlite3://:memory:"};
-            cfg.MODE_STORES_HISTORY = false;
+            cfg.setInMemoryMode();
             cfg.MODE_DOES_CATCHUP = false;
-            cfg.MODE_USES_IN_MEMORY_LEDGER = true;
-            cfg.MODE_ENABLES_BUCKETLIST = true;
-            cfg.DISABLE_XDR_FSYNC = true;
 
             auto app = Application::create(clock, cfg, false);
             app->start();
             auto const& lm = app->getLedgerManager();
             auto const& hm = app->getHistoryManager();
-            auto const& cm = app->getCatchupManager();
             auto& io = clock.getIOContext();
             asio::io_context::work mainWork(io);
             LedgerNumHashPair authPair;
@@ -799,7 +862,7 @@ runWriteVerifiedCheckpointHashes(CommandLineArgs const& args)
                         "Found authenticated checkpoint hash {} for ledger {}",
                         hexAbbrev(h), seq);
                     authPair.first = seq;
-                    authPair.second = digitalbits::make_optional<Hash>(h);
+                    authPair.second = std::make_optional<Hash>(h);
                 }
                 else if (authPair.first != seq)
                 {
@@ -823,13 +886,6 @@ runWriteVerifiedCheckpointHashes(CommandLineArgs const& args)
                 {
                     auto const& lhe = lm.getLastClosedLedgerHeader();
                     tryCheckpoint(lhe.header.ledgerSeq, lhe.hash);
-                }
-                else if (cm.hasBufferedLedger())
-                {
-                    auto const& lcd = cm.getLastBufferedLedger();
-                    uint32_t seq = lcd.getLedgerSeq() - 1;
-                    Hash hash = lcd.getTxSet()->previousLedgerHash();
-                    tryCheckpoint(seq, hash);
                 }
             }
             if (authPair.second)
@@ -872,6 +928,44 @@ runDumpXDR(CommandLineArgs const& args)
                            dumpXdrStream(xdr, compact);
                            return 0;
                        });
+}
+
+int
+runEncodeAsset(CommandLineArgs const& args)
+{
+    std::string code, issuer;
+
+    return runWithHelp(args, {codeParser(code), issuerParser(issuer)}, [&] {
+        Asset asset;
+        if (code.empty() && issuer.empty())
+        {
+            asset.type(ASSET_TYPE_NATIVE);
+        }
+        else if (code.empty() || issuer.empty())
+        {
+            throw std::runtime_error("If one of code or issuer is defined, the "
+                                     "other must be defined");
+        }
+        else if (code.size() <= 4)
+        {
+            asset.type(ASSET_TYPE_CREDIT_ALPHANUM4);
+            strToAssetCode(asset.alphaNum4().assetCode, code);
+            asset.alphaNum4().issuer = KeyUtils::fromStrKey<PublicKey>(issuer);
+        }
+        else if (code.size() <= 12)
+        {
+            asset.type(ASSET_TYPE_CREDIT_ALPHANUM12);
+            strToAssetCode(asset.alphaNum12().assetCode, code);
+            asset.alphaNum12().issuer = KeyUtils::fromStrKey<PublicKey>(issuer);
+        }
+        else
+        {
+            throw std::runtime_error("Asset code must be <= 12 characters");
+        }
+        std::cout << decoder::encode_b64(xdr::xdr_to_opaque(asset))
+                  << std::endl;
+        return 0;
+    });
 }
 
 int
@@ -927,28 +1021,44 @@ runSelfCheck(CommandLineArgs const& args)
 }
 
 int
-runInferQuorum(CommandLineArgs const& args)
+runMergeBucketList(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
-    uint32_t ledgerNum = 0;
+    std::string outputDir{"."};
+
     return runWithHelp(
         args,
-        {configurationParser(configOption), historyLedgerNumber(ledgerNum)},
-        [&] {
-            inferQuorumAndWrite(configOption.getConfig(), ledgerNum);
-            return 0;
-        });
+        {configurationParser(configOption),
+         outputDirParser(outputDir).required()},
+        [&] { return mergeBucketList(configOption.getConfig(), outputDir); });
 }
 
 int
 runNewDB(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
+    bool minimalForInMemoryMode = false;
 
-    return runWithHelp(args, {configurationParser(configOption)}, [&] {
-        initializeDatabase(configOption.getConfig());
-        return 0;
-    });
+    auto minimalDBParser = [](bool& minimalForInMemoryMode) {
+        return clara::Opt{
+            minimalForInMemoryMode}["--minimal-for-in-memory-mode"](
+            "Reset the special database used only for in-memory mode (see "
+            "--in-memory flag");
+    };
+
+    return runWithHelp(args,
+                       {configurationParser(configOption),
+                        minimalDBParser(minimalForInMemoryMode)},
+                       [&] {
+                           auto cfg = configOption.getConfig();
+                           if (minimalForInMemoryMode)
+                           {
+                               cfg.DATABASE =
+                                   SecretValue{minimalDBForInMemoryMode(cfg)};
+                           }
+                           initializeDatabase(cfg);
+                           return 0;
+                       });
 }
 
 int
@@ -998,15 +1108,19 @@ runPrintXdr(CommandLineArgs const& args)
     std::string fileType{"auto"};
     auto base64 = false;
     auto compact = false;
+    auto rawMode = false;
 
     auto fileTypeOpt = clara::Opt(fileType, "FILE-TYPE")["--filetype"](
-        "[auto|ledgerheader|meta|result|resultpair|tx|txfee]");
+        "[auto|asset|ledgerentry|ledgerheader|meta|result|resultpair|tx|"
+        "txfee]");
 
     return runWithHelp(args,
                        {fileNameParser(xdr), fileTypeOpt, base64Parser(base64),
-                        compactParser(compact)},
+                        compactParser(compact),
+                        clara::Opt{rawMode}["--raw"](
+                            "raw mode, do not normalize some objects")},
                        [&] {
-                           printXdr(xdr, fileType, base64, compact);
+                           printXdr(xdr, fileType, base64, compact, rawMode);
                            return 0;
                        });
 }
@@ -1030,48 +1144,94 @@ run(CommandLineArgs const& args)
 {
     CommandLine::ConfigOption configOption;
     auto disableBucketGC = false;
-    uint32_t simulateSleepPerOp = 0;
     std::string stream;
     bool inMemory = false;
     bool waitForConsensus = false;
     uint32_t startAtLedger = 0;
     std::string startAtHash;
 
-    auto simulateParser = [](uint32_t& simulateSleepPerOp) {
-        return clara::Opt{simulateSleepPerOp,
-                          "MICROSECONDS"}["--simulate-apply-per-op"](
-            "simulate application time per operation");
-    };
-
     return runWithHelp(
         args,
         {configurationParser(configOption),
          disableBucketGCParser(disableBucketGC),
-         simulateParser(simulateSleepPerOp), metadataOutputStreamParser(stream),
-         inMemoryParser(inMemory), waitForConsensusParser(waitForConsensus),
+         metadataOutputStreamParser(stream), inMemoryParser(inMemory),
+         waitForConsensusParser(waitForConsensus),
          startAtLedgerParser(startAtLedger), startAtHashParser(startAtHash)},
         [&] {
             Config cfg;
-            optional<CatchupConfiguration> cc;
+            std::shared_ptr<VirtualClock> clock;
+            VirtualClock::Mode clockMode = VirtualClock::REAL_TIME;
+            Application::pointer app;
+
             try
             {
+                // First, craft and validate the configuration
                 cfg = configOption.getConfig();
                 cfg.DISABLE_BUCKET_GC = disableBucketGC;
-                if (simulateSleepPerOp > 0)
+
+                if (!cfg.OP_APPLY_SLEEP_TIME_DURATION_FOR_TESTING.empty() ||
+                    !cfg.OP_APPLY_SLEEP_TIME_WEIGHT_FOR_TESTING.empty())
                 {
                     cfg.DATABASE = SecretValue{"sqlite3://:memory:"};
-                    cfg.OP_APPLY_SLEEP_TIME_FOR_TESTING = simulateSleepPerOp;
-                    cfg.MODE_STORES_HISTORY = false;
+                    cfg.MODE_STORES_HISTORY_MISC = false;
                     cfg.MODE_USES_IN_MEMORY_LEDGER = false;
                     cfg.MODE_ENABLES_BUCKETLIST = false;
                     cfg.PREFETCH_BATCH_SIZE = 0;
                 }
 
-                cc = maybeEnableInMemoryLedgerMode(cfg, inMemory, startAtLedger,
-                                                   startAtHash);
+                maybeEnableInMemoryMode(cfg, inMemory, startAtLedger,
+                                        startAtHash,
+                                        /* persistMinimalData */ true);
                 maybeSetMetadataOutputStream(cfg, stream);
                 cfg.FORCE_SCP =
                     cfg.NODE_IS_VALIDATOR ? !waitForConsensus : false;
+
+                if (cfg.MANUAL_CLOSE)
+                {
+                    if (!cfg.NODE_IS_VALIDATOR)
+                    {
+                        LOG_ERROR(DEFAULT_LOG, "Starting digitalbits-core in "
+                                               "MANUAL_CLOSE mode requires "
+                                               "NODE_IS_VALIDATOR to be set");
+                        return 1;
+                    }
+                    if (cfg.RUN_STANDALONE)
+                    {
+                        clockMode = VirtualClock::VIRTUAL_TIME;
+                        if (cfg.AUTOMATIC_MAINTENANCE_COUNT != 0 ||
+                            cfg.AUTOMATIC_MAINTENANCE_PERIOD.count() != 0)
+                        {
+                            LOG_WARNING(DEFAULT_LOG,
+                                        "Using MANUAL_CLOSE and RUN_STANDALONE "
+                                        "together induces virtual time, which "
+                                        "requires automatic maintenance to be "
+                                        "disabled. AUTOMATIC_MAINTENANCE_COUNT "
+                                        "and AUTOMATIC_MAINTENANCE_PERIOD are "
+                                        "being overridden to 0.");
+                            cfg.AUTOMATIC_MAINTENANCE_COUNT = 0;
+                            cfg.AUTOMATIC_MAINTENANCE_PERIOD =
+                                std::chrono::seconds{0};
+                        }
+                    }
+                }
+
+                if (cfg.ARTIFICIALLY_ACCELERATE_TIME_FOR_TESTING)
+                {
+                    LOG_WARNING(DEFAULT_LOG, "Artificial acceleration of time "
+                                             "enabled (for testing only)");
+                }
+
+                // Second, setup the app with the final configuration.
+                // Note that when in in-memory mode, additional setup may be
+                // required (such as database reset, catchup, etc)
+                clock = std::make_shared<VirtualClock>(clockMode);
+                app = setupApp(cfg, *clock, startAtLedger, startAtHash);
+                if (!app)
+                {
+                    LOG_ERROR(DEFAULT_LOG,
+                              "Unable to setup the application to run");
+                    return 1;
+                }
             }
             catch (std::exception& e)
             {
@@ -1080,9 +1240,9 @@ run(CommandLineArgs const& args)
                 return 1;
             }
 
-            // run outside of catch block so that we properly
-            // capture crashes
-            return runWithConfig(cfg, cc);
+            // Finally, run the application outside of catch block so that we
+            // properly capture crashes
+            return runApp(app);
         });
 }
 
@@ -1121,22 +1281,6 @@ runVersion(CommandLineArgs const&)
 {
     std::cout << DIGITALBITS_CORE_VERSION << std::endl;
     return 0;
-}
-
-int
-runWriteQuorum(CommandLineArgs const& args)
-{
-    CommandLine::ConfigOption configOption;
-    std::string outputFile;
-    uint32_t ledgerNum = 0;
-    return runWithHelp(
-        args,
-        {configurationParser(configOption), historyLedgerNumber(ledgerNum),
-         outputFileParser(outputFile)},
-        [&] {
-            writeQuorumGraph(configOption.getConfig(), outputFile, ledgerNum);
-            return 0;
-        });
 }
 
 #ifdef BUILD_TESTS
@@ -1186,7 +1330,7 @@ runGenerateOrSimulateTxs(CommandLineArgs const& args, bool generate)
         }
         else if (firstLedgerInclusive > lastLedgerInclusive)
         {
-            return "last ledger must not preceed first ledger";
+            return "last ledger must not precede first ledger";
         }
         return "";
     };
@@ -1347,7 +1491,7 @@ runSimulateBuckets(CommandLineArgs const& args)
                     *app, n, checkpoint, dir, has);
 
             // Once simulated bucketlist is good to go, download ledgers headers
-            // to convince LedgerManager that we have succesfully restored
+            // to convince LedgerManager that we have successfully restored
             // ledger state
             auto cr = CheckpointRange::inclusive(
                 checkpoint, checkpoint,
@@ -1370,12 +1514,22 @@ runSimulateBuckets(CommandLineArgs const& args)
                 hdrIn.open(ft.localPath_nogz());
                 LedgerHeaderHistoryEntry curr;
                 // Read the last LedgerHeaderHistoryEntry to use as LCL
-                while (hdrIn && hdrIn.readOne(curr))
-                    ;
+                try
+                {
+                    while (hdrIn && hdrIn.readOne(curr))
+                        ;
+                }
+                catch (xdr::xdr_bad_message_size&)
+                {
+                    LOG_ERROR(DEFAULT_LOG,
+                              "Failed to read LedgerHeaderHistoryEntry. "
+                              "Version upgrade is likely required");
+                    return 1;
+                }
 
                 LOG_INFO(DEFAULT_LOG, "Assuming state for ledger {}",
                          curr.header.ledgerSeq);
-                app->getLedgerManager().setLastClosedLedger(curr);
+                app->getLedgerManager().setLastClosedLedger(curr, true);
                 app->getBucketManager().forgetUnreferencedBuckets();
             }
 
@@ -1411,19 +1565,25 @@ fuzzerModeParser(std::string& fuzzerModeArg, FuzzerMode& fuzzerMode)
 int
 runFuzz(CommandLineArgs const& args)
 {
-    el::Level logLevel{el::Level::Info};
+    LogLevel logLevel{LogLevel::LVL_FATAL};
     std::vector<std::string> metrics;
     std::string fileName;
+    std::string outputFile;
     int processID = 0;
     FuzzerMode fuzzerMode{FuzzerMode::OVERLAY};
     std::string fuzzerModeArg = "overlay";
 
     return runWithHelp(args,
                        {logLevelParser(logLevel), metricsParser(metrics),
-                        fileNameParser(fileName), processIDParser(processID),
+                        fileNameParser(fileName), outputFileParser(outputFile),
+                        processIDParser(processID),
                         fuzzerModeParser(fuzzerModeArg, fuzzerMode)},
                        [&] {
                            Logging::setLogLevel(logLevel, nullptr);
+                           if (!outputFile.empty())
+                           {
+                               Logging::setLoggingToFile(outputFile);
+                           }
 
                            fuzz(fileName, metrics, processID, fuzzerMode);
                            return 0;
@@ -1433,15 +1593,25 @@ runFuzz(CommandLineArgs const& args)
 int
 runGenFuzz(CommandLineArgs const& args)
 {
+    LogLevel logLevel{LogLevel::LVL_FATAL};
     std::string fileName;
+    std::string outputFile;
     FuzzerMode fuzzerMode{FuzzerMode::OVERLAY};
     std::string fuzzerModeArg = "overlay";
     int processID = 0;
 
     return runWithHelp(
         args,
-        {fileNameParser(fileName), fuzzerModeParser(fuzzerModeArg, fuzzerMode)},
+        {logLevelParser(logLevel), fileNameParser(fileName),
+         outputFileParser(outputFile),
+         fuzzerModeParser(fuzzerModeArg, fuzzerMode)},
         [&] {
+            Logging::setLogLevel(logLevel, nullptr);
+            if (!outputFile.empty())
+            {
+                Logging::setLoggingToFile(outputFile);
+            }
+
             FuzzUtils::createFuzzer(processID, fuzzerMode)->genFuzz(fileName);
             return 0;
         });
@@ -1456,20 +1626,22 @@ handleCommandLine(int argc, char* const* argv)
           "execute catchup from history archives without connecting to "
           "network",
           runCatchup},
-         {"check-quorum", "check quorum intersection of last network activity",
-          runCheckQuorum},
          {"verify-checkpoints", "write verified checkpoint ledger hashes",
           runWriteVerifiedCheckpointHashes},
          {"convert-id", "displays ID in all known forms", runConvertId},
+         {"diag-bucket-stats", "reports statistics on the content of a bucket",
+          diagBucketStats},
          {"dump-xdr", "dump an XDR file, for debugging", runDumpXDR},
+         {"encode-asset", "Print an encoded asset in base 64 for debugging",
+          runEncodeAsset},
          {"force-scp", "deprecated, use --wait-for-consensus option instead",
           runForceSCP},
          {"gen-seed", "generate and print a random node seed", runGenSeed},
          {"http-command", "send a command to local digitalbits-core",
           runHttpCommand},
-         {"self-check", "performs sanity checks", runSelfCheck},
-         {"infer-quorum", "print a quorum set inferred from history",
-          runInferQuorum},
+         {"self-check", "performs diagnostic checks", runSelfCheck},
+         {"merge-bucketlist", "writes diagnostic merged bucket list",
+          runMergeBucketList},
          {"new-db", "creates or restores the DB to the genesis ledger",
           runNewDB},
          {"new-hist", "initialize history archives", runNewHist},
@@ -1511,8 +1683,6 @@ handleCommandLine(int argc, char* const* argv)
          {"simulate-bucketlist", "simulate bucketlist", runSimulateBuckets},
          {"test", "execute test suite", runTest},
 #endif
-         {"write-quorum", "print a quorum set graph from history",
-          runWriteQuorum},
          {"version", "print version information", runVersion}}};
 
     auto adjustedCommandLine = commandLine.adjustCommandLine({argc, argv});
@@ -1520,7 +1690,8 @@ handleCommandLine(int argc, char* const* argv)
     bool didDefaultToHelp = command->name() != adjustedCommandLine.first;
 
     auto exeName = "digitalbits-core";
-    auto commandName = fmt::format("{0} {1}", exeName, command->name());
+    auto commandName =
+        fmt::format(FMT_STRING("{0} {1}"), exeName, command->name());
     auto args = CommandLineArgs{exeName, commandName, command->description(),
                                 adjustedCommandLine.second};
     if (command->name() == "run" || command->name() == "fuzz")

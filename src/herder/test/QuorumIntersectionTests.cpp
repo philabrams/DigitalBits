@@ -14,6 +14,7 @@
 #include "xdrpp/marshal.h"
 #include <fmt/format.h>
 #include <lib/json/json.h>
+#include <thread>
 #include <xdrpp/autocheck.h>
 
 using namespace digitalbits;
@@ -392,18 +393,19 @@ interconnectOrgsUnidir(xdr::xvector<xdr::xvector<PublicKey>> const& orgs,
                        std::vector<std::pair<size_t, size_t>> edges,
                        size_t ownThreshPct = 67, size_t innerThreshPct = 51)
 {
-    return interconnectOrgs(orgs,
-                            [&edges](size_t i, size_t j) {
-                                for (auto const& e : edges)
-                                {
-                                    if (e.first == i && e.second == j)
-                                    {
-                                        return true;
-                                    }
-                                }
-                                return false;
-                            },
-                            ownThreshPct, innerThreshPct);
+    return interconnectOrgs(
+        orgs,
+        [&edges](size_t i, size_t j) {
+            for (auto const& e : edges)
+            {
+                if (e.first == i && e.second == j)
+                {
+                    return true;
+                }
+            }
+            return false;
+        },
+        ownThreshPct, innerThreshPct);
 }
 
 static QuorumTracker::QuorumMap
@@ -411,19 +413,20 @@ interconnectOrgsBidir(xdr::xvector<xdr::xvector<PublicKey>> const& orgs,
                       std::vector<std::pair<size_t, size_t>> edges,
                       size_t ownThreshPct = 67, size_t innerThreshPct = 51)
 {
-    return interconnectOrgs(orgs,
-                            [&edges](size_t i, size_t j) {
-                                for (auto const& e : edges)
-                                {
-                                    if ((e.first == i && e.second == j) ||
-                                        (e.first == j && e.second == i))
-                                    {
-                                        return true;
-                                    }
-                                }
-                                return false;
-                            },
-                            ownThreshPct, innerThreshPct);
+    return interconnectOrgs(
+        orgs,
+        [&edges](size_t i, size_t j) {
+            for (auto const& e : edges)
+            {
+                if ((e.first == i && e.second == j) ||
+                    (e.first == j && e.second == i))
+                {
+                    return true;
+                }
+            }
+            return false;
+        },
+        ownThreshPct, innerThreshPct);
 }
 
 TEST_CASE("quorum intersection 4-org fully-connected - elide all minquorums",
@@ -596,7 +599,7 @@ TEST_CASE("quorum intersection 8-org core-and-periphery dangling",
     //          |  X  |
     //          | / \ |
     //        org2---org3
-    //       /           \
+    //       /           \.
     //    org6           org7
     //
     auto orgs = generateOrgs(8, {3, 3, 3, 3, 2, 2, 2, 2});
@@ -645,7 +648,7 @@ TEST_CASE("quorum intersection 8-org core-and-periphery balanced",
     //      |   |  X  |   |
     //      |   | / \ |  /
     //      | org2---org3
-    //      |/  \        \
+    //      |/  \        \.
     //    org6   --------org7
     //
     auto orgs = generateOrgs(8, {3, 3, 3, 3, 2, 2, 2, 2});
@@ -692,8 +695,8 @@ TEST_CASE("quorum intersection 8-org core-and-periphery unbalanced",
     //          |  X  |
     //          | / \ |
     //        org2---org3
-    //       /  \     /  \
-    //    org6---\----    \
+    //       /  \     /  \.
+    //    org6---\----    \.
     //            -------- org7
     //
     auto orgs = generateOrgs(8, {3, 3, 3, 3, 2, 2, 2, 2});

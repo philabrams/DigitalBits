@@ -5,8 +5,8 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "history/HistoryArchive.h"
-#include "history/InferredQuorum.h"
 #include "overlay/DigitalBitsXDR.h"
+#include "util/GlobalChecks.h"
 #include <functional>
 #include <memory>
 
@@ -143,7 +143,7 @@
  * Depending on how it's invoked, the catchup system will then usually define
  * RESUME as either equal to NEXT or LAST, or in unusual cases some ledger
  * between the two. RESUME is the ledger at which the ledger state is
- * reconstituted "directly" from the bucket list, and from which hisory blocks
+ * reconstituted "directly" from the bucket list, and from which history blocks
  * are replayed thereafter. It is therefore, practically, a kind of "new
  * beginning of history". At least the history that will be contiguously seen
  * on-hand on this peer.
@@ -286,7 +286,7 @@ class HistoryManager
     {
         uint32_t last = checkpointContainingLedger(ledger); // == 63, 127, 191
         uint32_t size = sizeOfCheckpointContaining(ledger); // == 63, 64, 64
-        assert(last >= size);
+        releaseAssert(last >= size);
         return last - size; // == 0, 63, 127
     }
 
@@ -295,7 +295,8 @@ class HistoryManager
     uint32_t
     ledgerToTriggerCatchup(uint32_t firstLedgerOfBufferedCheckpoint)
     {
-        assert(isFirstLedgerInCheckpoint(firstLedgerOfBufferedCheckpoint));
+        releaseAssert(
+            isFirstLedgerInCheckpoint(firstLedgerOfBufferedCheckpoint));
         return firstLedgerOfBufferedCheckpoint + 1;
     }
 
@@ -354,8 +355,8 @@ class HistoryManager
                      std::vector<std::string> const& originalBuckets,
                      bool success) = 0;
 
-    // Infer a quorum set by reading SCP messages in history archives.
-    virtual InferredQuorum inferQuorum(uint32_t ledgerNum) = 0;
+    // clear the publish queue for any ledgers more recent than ledgerSeq
+    virtual void deleteCheckpointsNewerThan(uint32_t ledgerSeq) = 0;
 
     // Return the name of the HistoryManager's tmpdir (used for storing files in
     // transit).

@@ -6,8 +6,10 @@
 #include "main/Config.h"
 #include "main/ExternalQueue.h"
 #include "util/GlobalChecks.h"
+#include "util/LogSlowExecution.h"
 #include "util/Logging.h"
 #include "util/numeric.h"
+
 #include <Tracy.hpp>
 #include <fmt/format.h>
 
@@ -28,16 +30,18 @@ Maintainer::start()
     {
         // compare number of ledgers deleted per maintenance cycle with actual
         // number
-        int64 ledgersPerMaintenancePeriod = bigDivide(
+        int64 ledgersPerMaintenancePeriod = bigDivideOrThrow(
             c.AUTOMATIC_MAINTENANCE_PERIOD.count(), 1,
             c.getExpectedLedgerCloseTime().count(), Rounding::ROUND_UP);
         if (c.AUTOMATIC_MAINTENANCE_COUNT <= ledgersPerMaintenancePeriod)
         {
-            LOG_WARNING(DEFAULT_LOG, "{}",
-                        fmt::format("Maintenance may not be able to keep up: "
-                                    "AUTOMATIC_MAINTENANCE_COUNT={} <= {}",
-                                    c.AUTOMATIC_MAINTENANCE_COUNT,
-                                    ledgersPerMaintenancePeriod));
+            LOG_WARNING(
+                DEFAULT_LOG, "{}",
+                fmt::format(
+                    FMT_STRING("Maintenance may not be able to keep up: "
+                               "AUTOMATIC_MAINTENANCE_COUNT={:d} <= {:d}"),
+                    c.AUTOMATIC_MAINTENANCE_COUNT,
+                    ledgersPerMaintenancePeriod));
         }
         scheduleMaintenance();
     }
@@ -63,6 +67,11 @@ Maintainer::performMaintenance(uint32_t count)
 {
     ZoneScoped;
     LOG_INFO(DEFAULT_LOG, "Performing maintenance");
+    auto logSlow = LogSlowExecution(
+        "Performing maintenance", LogSlowExecution::Mode::AUTOMATIC_RAII,
+        "performance issue: check database or perform a large manual "
+        "maintenance followed by database maintenance. Maintenance took",
+        std::chrono::seconds{2});
     ExternalQueue ps{mApp};
     ps.deleteOldEntries(count);
 }

@@ -5,7 +5,10 @@
 #include "crypto/SecretKey.h"
 #include "herder/Herder.h"
 #include "herder/HerderImpl.h"
+#include "herder/SurgePricingUtils.h"
 #include "herder/TransactionQueue.h"
+#include "herder/TxQueueLimiter.h"
+#include "ledger/LedgerHashUtils.h"
 #include "test/TestAccount.h"
 #include "test/TestUtils.h"
 #include "test/TxTests.h"
@@ -13,7 +16,10 @@
 #include "transactions/SignatureUtils.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Timer.h"
+#include "xdr/DigitalBits-transaction.h"
 
+#include <chrono>
+#include <fmt/chrono.h>
 #include <lib/catch.hpp>
 #include <numeric>
 
@@ -24,11 +30,16 @@ namespace
 {
 TransactionFrameBasePtr
 transaction(Application& app, TestAccount& account, int64_t sequenceDelta,
-            int64_t amount, uint32_t fee)
+            int64_t amount, uint32_t fee, int nbOps = 1)
 {
+    std::vector<Operation> ops;
+    for (int i = 0; i < nbOps; ++i)
+    {
+        ops.emplace_back(payment(account.getPublicKey(), amount));
+    }
     return transactionFromOperations(
-        app, account, account.getLastSequenceNumber() + sequenceDelta,
-        {payment(account.getPublicKey(), amount)}, fee);
+        app, account, account.getLastSequenceNumber() + sequenceDelta, ops,
+        fee);
 }
 
 TransactionFrameBasePtr
@@ -65,7 +76,7 @@ class TransactionQueueTest
         struct AccountState
         {
             AccountID mAccountID;
-            int mAge;
+            uint32 mAge;
             std::vector<TransactionFrameBasePtr> mAccountTransactions;
         };
 
@@ -176,6 +187,8 @@ class TransactionQueueTest
                     expectedFees[accountState.mAccountID]);
             REQUIRE(accountTransactionQueueInfo.mMaxSeq == seqNum);
             REQUIRE(accountTransactionQueueInfo.mAge == accountState.mAge);
+            REQUIRE(accountTransactionQueueInfo.mBroadcastQueueOps ==
+                    accountTransactionQueueInfo.mQueueSizeOps);
             totOps += accountTransactionQueueInfo.mQueueSizeOps;
 
             for (auto& tx : accountState.mAccountTransactions)
@@ -207,11 +220,12 @@ class TransactionQueueTest
 };
 }
 
-TEST_CASE("TransactionQueue", "[herder][TransactionQueue]")
+TEST_CASE("TransactionQueue base", "[herder][transactionqueue]")
 {
     VirtualClock clock;
     auto cfg = getTestConfig();
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 4;
+    cfg.FLOOD_TX_PERIOD_MS = 100;
     auto app = createTestApplication(clock, cfg);
     auto const minBalance2 = app->getLedgerManager().getLastMinBalance(2);
 
@@ -220,76 +234,53 @@ TEST_CASE("TransactionQueue", "[herder][TransactionQueue]")
     auto account2 = root.create("a2", minBalance2);
     auto account3 = root.create("a3", minBalance2);
 
-    auto txSeqA1T0 = transaction(*app, account1, 0, 1, 100);
+    auto txSeqA1T0 = transaction(*app, account1, 0, 1, 200);
     auto txSeqA1T1 = transaction(*app, account1, 1, 1, 200);
-    auto txSeqA1T2 = transaction(*app, account1, 2, 1, 300);
-    auto txSeqA1T1V2 = transaction(*app, account1, 1, 2, 400);
-    auto txSeqA1T2V2 = transaction(*app, account1, 2, 2, 500);
-    auto txSeqA1T3 = transaction(*app, account1, 3, 1, 600);
-    auto txSeqA1T4 = transaction(*app, account1, 4, 1, 700);
-    auto txSeqA2T1 = transaction(*app, account2, 1, 1, 800);
-    auto txSeqA2T2 = transaction(*app, account2, 2, 1, 900);
+    auto txSeqA1T2 = transaction(*app, account1, 2, 1, 400, 2);
+    auto txSeqA1T1V2 = transaction(*app, account1, 1, 2, 200);
+    auto txSeqA1T2V2 = transaction(*app, account1, 2, 2, 200);
+    auto txSeqA1T3 = transaction(*app, account1, 3, 1, 200);
+    auto txSeqA1T4 = transaction(*app, account1, 4, 1, 200);
+    auto txSeqA2T1 = transaction(*app, account2, 1, 1, 200);
+    auto txSeqA2T2 = transaction(*app, account2, 2, 1, 200);
     auto txSeqA3T1 = transaction(*app, account3, 1, 1, 100);
 
-    SECTION("small sequence number")
+    SECTION("simple sequence")
     {
         TransactionQueueTest test{*app};
+
+        // adding first tx
+        // too small seqnum
         test.add(txSeqA1T0, TransactionQueue::AddResult::ADD_STATUS_ERROR);
         test.check({{{account1}, {account2}}, {}});
-    }
-
-    SECTION("big sequence number")
-    {
-        TransactionQueueTest test{*app};
+        // too big seqnum
         test.add(txSeqA1T2, TransactionQueue::AddResult::ADD_STATUS_ERROR);
         test.check({{{account1}, {account2}}, {}});
-    }
 
-    SECTION("good sequence number")
-    {
-        TransactionQueueTest test{*app};
         test.add(txSeqA1T1, TransactionQueue::AddResult::ADD_STATUS_PENDING);
         test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
-    }
 
-    SECTION("good sequence number, same twice")
-    {
-        TransactionQueueTest test{*app};
-        test.add(txSeqA1T1, TransactionQueue::AddResult::ADD_STATUS_PENDING);
-        test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
+        // adding second tx
         test.add(txSeqA1T2, TransactionQueue::AddResult::ADD_STATUS_PENDING);
         test.check({{{account1, 0, {txSeqA1T1, txSeqA1T2}}, {account2}}, {}});
+
+        // adding third tx
+        // duplicates
         test.add(txSeqA1T1, TransactionQueue::AddResult::ADD_STATUS_DUPLICATE);
         test.check({{{account1, 0, {txSeqA1T1, txSeqA1T2}}, {account2}}, {}});
         test.add(txSeqA1T2, TransactionQueue::AddResult::ADD_STATUS_DUPLICATE);
         test.check({{{account1, 0, {txSeqA1T1, txSeqA1T2}}, {account2}}, {}});
-    }
-
-    SECTION("good then small sequence number")
-    {
-        TransactionQueueTest test{*app};
-        test.add(txSeqA1T1, TransactionQueue::AddResult::ADD_STATUS_PENDING);
-        test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
-        test.add(txSeqA1T3, TransactionQueue::AddResult::ADD_STATUS_ERROR);
-        test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
-    }
-
-    SECTION("good then big sequence number")
-    {
-        TransactionQueueTest test{*app};
-        test.add(txSeqA1T1, TransactionQueue::AddResult::ADD_STATUS_PENDING);
-        test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
-        test.add(txSeqA1T3, TransactionQueue::AddResult::ADD_STATUS_ERROR);
-        test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
-    }
-
-    SECTION("good then good sequence number")
-    {
-        TransactionQueueTest test{*app};
-        test.add(txSeqA1T1, TransactionQueue::AddResult::ADD_STATUS_PENDING);
-        test.check({{{account1, 0, {txSeqA1T1}}, {account2}}, {}});
-        test.add(txSeqA1T2, TransactionQueue::AddResult::ADD_STATUS_PENDING);
+        // too low
+        test.add(txSeqA1T0, TransactionQueue::AddResult::ADD_STATUS_ERROR);
         test.check({{{account1, 0, {txSeqA1T1, txSeqA1T2}}, {account2}}, {}});
+        // too high
+        test.add(txSeqA1T4, TransactionQueue::AddResult::ADD_STATUS_ERROR);
+        test.check({{{account1, 0, {txSeqA1T1, txSeqA1T2}}, {account2}}, {}});
+        // just right
+        test.add(txSeqA1T3, TransactionQueue::AddResult::ADD_STATUS_PENDING);
+        test.check(
+            {{{account1, 0, {txSeqA1T1, txSeqA1T2, txSeqA1T3}}, {account2}},
+             {}});
     }
 
     SECTION("good sequence number, same twice with shift")
@@ -664,30 +655,230 @@ TEST_CASE("TransactionQueue", "[herder][TransactionQueue]")
                      {account2, 3, {txSeqA2T1}},
                      {account3, 0, {txSeqA3T1}}}});
     }
-    SECTION("many transactions hit the pool limit")
-    {
-        TransactionQueueTest test{*app};
-        test.add(txSeqA3T1, TransactionQueue::AddResult::ADD_STATUS_PENDING);
-        std::vector<TransactionFrameBasePtr> a3Txs({txSeqA3T1});
-        std::vector<TransactionFrameBasePtr> banned;
+}
 
-        for (int i = 2; i <= 10; i++)
-        {
-            auto txSeqA3Ti = transaction(*app, account3, i, 1, 100);
-            if (i <= 8)
+TEST_CASE("TransactionQueue limits", "[herder][transactionqueue]")
+{
+    VirtualClock clock;
+    auto cfg = getTestConfig();
+    cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 4;
+    cfg.FLOOD_TX_PERIOD_MS = 100;
+    auto app = createTestApplication(clock, cfg);
+    auto const minBalance2 = app->getLedgerManager().getLastMinBalance(2);
+
+    auto root = TestAccount::createRoot(*app);
+    auto account1 = root.create("a1", minBalance2);
+    auto account2 = root.create("a2", minBalance2);
+    auto account3 = root.create("a3", minBalance2);
+    auto account4 = root.create("a4", minBalance2);
+    auto account5 = root.create("a5", minBalance2);
+    auto account6 = root.create("a6", minBalance2);
+
+    SECTION("simple limit")
+    {
+        auto simpleLimitTest = [&](std::function<uint32(int)> fee,
+                                   bool belowFee) {
+            TransactionQueueTest test{*app};
+            auto minFee = fee(1);
+            auto txSeqA3T1 = transaction(*app, account3, 1, minFee, 100);
+
+            test.add(txSeqA3T1,
+                     TransactionQueue::AddResult::ADD_STATUS_PENDING);
+            std::vector<TransactionFrameBasePtr> a3Txs({txSeqA3T1});
+            std::vector<TransactionFrameBasePtr> banned;
+
+            for (int i = 2; i <= 10; i++)
             {
-                test.add(txSeqA3Ti,
-                         TransactionQueue::AddResult::ADD_STATUS_PENDING);
-                a3Txs.emplace_back(txSeqA3Ti);
+                auto txFee = fee(i);
+                if (i == 10)
+                {
+                    txFee *= 100;
+                }
+                auto txSeqA3Ti = transaction(*app, account3, i, 1, txFee);
+                if (i <= 8)
+                {
+                    test.add(txSeqA3Ti,
+                             TransactionQueue::AddResult::ADD_STATUS_PENDING);
+                    a3Txs.emplace_back(txSeqA3Ti);
+                    minFee = std::min(minFee, txFee);
+                }
+                else
+                {
+                    if (i == 9 && belowFee)
+                    {
+                        // below fee requirement
+                        test.add(txSeqA3Ti,
+                                 TransactionQueue::AddResult::ADD_STATUS_ERROR);
+                        REQUIRE(txSeqA3Ti->getResult().feeCharged ==
+                                (minFee + 1));
+                    }
+                    else // if (i == 10)
+                    {
+                        // would need to kick out own transaction
+                        test.add(txSeqA3Ti, TransactionQueue::AddResult::
+                                                ADD_STATUS_TRY_AGAIN_LATER);
+                    }
+                    banned.emplace_back(txSeqA3Ti);
+                    test.check({{{account3, 0, a3Txs}}, {banned}});
+                }
+            }
+        };
+        SECTION("constant fee")
+        {
+            simpleLimitTest([](int) { return 100; }, true);
+        }
+        SECTION("fee increasing")
+        {
+            simpleLimitTest([](int i) { return 100 * i; }, false);
+        }
+        SECTION("fee decreasing")
+        {
+            simpleLimitTest([](int i) { return 100 * (100 - i); }, false);
+        }
+    }
+    SECTION("multi accounts limits")
+    {
+        TxQueueLimiter limiter(3, app->getLedgerManager());
+
+        REQUIRE(limiter.maxQueueSizeOps() == 12);
+
+        struct SetupElement
+        {
+            TestAccount& account;
+            SequenceNumber startSeq;
+            std::vector<std::pair<int, int>> opsFeeVec;
+        };
+        std::vector<TransactionFrameBasePtr> txs;
+
+        TransactionFrameBasePtr noTx;
+
+        auto setup = [&](std::vector<SetupElement> elems) {
+            for (auto& e : elems)
+            {
+                SequenceNumber seq = e.startSeq;
+                for (auto opsFee : e.opsFeeVec)
+                {
+                    auto tx = transaction(*app, e.account, seq++, 1,
+                                          opsFee.second, opsFee.first);
+                    bool can = limiter.canAddTx(tx, noTx).first;
+                    REQUIRE(can);
+                    limiter.addTransaction(tx);
+                    txs.emplace_back(tx);
+                }
+            }
+            REQUIRE(limiter.size() == 11);
+        };
+        // act \ base fee   400 300 200  100
+        //  1                2   1    0   0
+        //  2                1   1    2   0
+        //  3                0   1    1   0
+        //  4                0   0    1   0
+        //  5                0   0    0   1
+        // total             3   3    4   1 --> 11 (free = 1)
+        setup({{account1, 1, {{1, 400}, {1, 300}, {1, 400}}},
+               {account2, 1, {{1, 400}, {1, 300}, {2, 400}}},
+               {account3, 1, {{1, 300}, {1, 200}}},
+               {account4, 1, {{1, 200}}},
+               {account5, 1, {{1, 100}}}});
+        auto checkAndAddTx = [&](bool expected, TestAccount& account, int ops,
+                                 int fee, int64 expFeeOnFailed) {
+            auto tx = transaction(*app, account, 1000, 1, fee, ops);
+            auto can = limiter.canAddTx(tx, noTx);
+            REQUIRE(expected == can.first);
+            if (can.first)
+            {
+                bool evicted = limiter.evictTransactions(
+                    tx->getNumOperations(),
+                    [&](TransactionFrameBasePtr const& evict) {
+                        // can't evict cheaper transactions
+                        auto cmp3 = feeRate3WayCompare(evict, tx);
+                        REQUIRE(cmp3 < 0);
+                        // can't evict self
+                        bool same = evict->getSourceID() == tx->getSourceID();
+                        REQUIRE(!same);
+                        limiter.removeTransaction(evict);
+                    });
+                REQUIRE(evicted);
+                limiter.addTransaction(tx);
+                limiter.removeTransaction(tx);
             }
             else
             {
-                test.add(
-                    txSeqA3Ti,
-                    TransactionQueue::AddResult::ADD_STATUS_TRY_AGAIN_LATER);
-                banned.emplace_back(txSeqA3Ti);
-                test.check({{{account3, 0, a3Txs}}, {banned}});
+                REQUIRE(can.second == expFeeOnFailed);
             }
+        };
+        // check that `account`
+        // can add ops operations,
+        // but not add ops+1 at the same basefee
+        // that would require evicting a transaction with basefee
+        auto checkTxBoundary = [&](TestAccount& account, int ops, int bfee) {
+            auto txFee1 = bfee * (ops + 1);
+            checkAndAddTx(false, account, ops + 1, txFee1, txFee1 + 1);
+            checkAndAddTx(true, account, ops, bfee * ops, 0);
+        };
+        auto getBaseFeeRate = [](TxQueueLimiter const& limiter) {
+            auto fr = limiter.getMinFeeNeeded();
+            return fr.second == 0 ? 0ll
+                                  : bigDivideOrThrow(fr.first, 1, fr.second,
+                                                     Rounding::ROUND_UP);
+        };
+
+        SECTION("evict nothing")
+        {
+            checkTxBoundary(account1, 1, 100);
+            REQUIRE(limiter.size() == 11);
+            REQUIRE(getBaseFeeRate(limiter) == 0);
+            // can't evict transaction with the same base fee
+            checkAndAddTx(false, account1, 2, 100 * 2, 2 * 100 + 1);
+            REQUIRE(limiter.size() == 11);
+            REQUIRE(getBaseFeeRate(limiter) == 0);
+        }
+        SECTION("evict 100s")
+        {
+            checkTxBoundary(account1, 2, 200);
+            REQUIRE(limiter.size() == 10);
+        }
+        SECTION("evict 100s and 200s")
+        {
+            checkTxBoundary(account6, 6, 300);
+            REQUIRE(limiter.size() == 6);
+            REQUIRE(getBaseFeeRate(limiter) == 200);
+        }
+        SECTION("evict 100s and 200s, can't evict self")
+        {
+            checkAndAddTx(false, account2, 6, 6 * 300, 0);
+        }
+        SECTION("evict all")
+        {
+            checkAndAddTx(true, account6, 12, 12 * 500, 0);
+            REQUIRE(limiter.size() == 0);
+            REQUIRE(getBaseFeeRate(limiter) == 400);
+            limiter.resetMinFeeNeeded();
+            REQUIRE(getBaseFeeRate(limiter) == 0);
+        }
+        SECTION("enforce limit")
+        {
+            REQUIRE(getBaseFeeRate(limiter) == 0);
+            checkAndAddTx(true, account1, 2, 2 * 200, 0);
+            REQUIRE(limiter.size() == 10);
+            // at this point as a transaction of base fee 100 was evicted
+            // no transactions of base fee 100 can be accepted
+            REQUIRE(getBaseFeeRate(limiter) == 100);
+            checkAndAddTx(false, account1, 1, 100, 101);
+            // but higher fee can
+            checkAndAddTx(true, account1, 1, 200, 0);
+            REQUIRE(limiter.size() == 10);
+            REQUIRE(getBaseFeeRate(limiter) == 100);
+            // evict some more (300s)
+            checkAndAddTx(true, account6, 8, 300 * 8 + 1, 0);
+            REQUIRE(limiter.size() == 4);
+            REQUIRE(getBaseFeeRate(limiter) == 300);
+            checkAndAddTx(false, account1, 1, 300, 301);
+
+            // now, reset the min fee requirement
+            limiter.resetMinFeeNeeded();
+            REQUIRE(getBaseFeeRate(limiter) == 0);
+            checkAndAddTx(true, account1, 1, 100, 0);
         }
     }
 }
@@ -702,8 +893,8 @@ TEST_CASE("transaction queue starting sequence boundary",
     auto root = TestAccount::createRoot(*app);
     auto acc1 = root.create("a1", minBalance2);
 
+    closeLedgerOn(*app, 2, 1, 1, 2020);
     closeLedgerOn(*app, 3, 1, 1, 2020);
-    closeLedgerOn(*app, 4, 1, 1, 2020);
 
     SECTION("check a single transaction")
     {
@@ -763,7 +954,9 @@ TEST_CASE("transaction queue starting sequence boundary",
 TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
 {
     VirtualClock clock;
-    auto app = createTestApplication(clock, getTestConfig());
+    auto cfg = getTestConfig();
+    cfg.FLOOD_TX_PERIOD_MS = 100;
+    auto app = createTestApplication(clock, cfg);
     auto const minBalance0 = app->getLedgerManager().getLastMinBalance(0);
     auto const minBalance2 = app->getLedgerManager().getLastMinBalance(2);
 
@@ -779,7 +972,7 @@ TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
         auto fb = feeBump(*app, account1, tx, 200);
         test.add(fb, TransactionQueue::AddResult::ADD_STATUS_PENDING);
 
-        for (int i = 0; i <= 3; ++i)
+        for (uint32 i = 0; i <= 3; ++i)
         {
             test.check({{{account1, i, {fb}}, {account2}, {account3}}, {}});
             test.shift();
@@ -795,7 +988,7 @@ TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
         test.add(fb, TransactionQueue::AddResult::ADD_STATUS_PENDING);
         test.check({{{account1, 0, {fb}}, {account2, 0}}, {}});
 
-        for (int i = 1; i <= 3; ++i)
+        for (uint32 i = 1; i <= 3; ++i)
         {
             test.shift();
             test.check({{{account1, i, {fb}}, {account2, 0}, {account3}}, {}});
@@ -820,7 +1013,7 @@ TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
         auto fb2 = feeBump(*app, account3, tx2, 200);
         test.add(fb2, TransactionQueue::AddResult::ADD_STATUS_PENDING);
 
-        for (int i = 1; i <= 3; ++i)
+        for (uint32 i = 1; i <= 3; ++i)
         {
             test.check({{{account1, i, {fb1}},
                          {account2, i - 1, {fb2}},
@@ -849,7 +1042,7 @@ TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
         auto tx2 = transaction(*app, account3, 1, 1, 100);
         test.add(tx2, TransactionQueue::AddResult::ADD_STATUS_PENDING);
 
-        for (int i = 1; i <= 3; ++i)
+        for (uint32 i = 1; i <= 3; ++i)
         {
             test.check(
                 {{{account1, i, {fb1}}, {account2}, {account3, i - 1, {tx2}}},
@@ -876,7 +1069,7 @@ TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
         auto fb2 = feeBump(*app, account3, tx2, 200);
         test.add(fb2, TransactionQueue::AddResult::ADD_STATUS_PENDING);
 
-        for (int i = 1; i <= 3; ++i)
+        for (uint32 i = 1; i <= 3; ++i)
         {
             test.check(
                 {{{account1, i - 1, {fb2}}, {account2}, {account3, i, {tx1}}},
@@ -1025,7 +1218,9 @@ TEST_CASE("transaction queue with fee-bump", "[herder][transactionqueue]")
 TEST_CASE("replace by fee", "[herder][transactionqueue]")
 {
     VirtualClock clock;
-    auto app = createTestApplication(clock, getTestConfig());
+    auto cfg = getTestConfig();
+    cfg.FLOOD_TX_PERIOD_MS = 100;
+    auto app = createTestApplication(clock, cfg);
     auto const minBalance2 = app->getLedgerManager().getLastMinBalance(2);
 
     auto root = TestAccount::createRoot(*app);
@@ -1137,25 +1332,23 @@ TEST_CASE("replace by fee", "[herder][transactionqueue]")
             std::vector<std::string> position{"first", "middle", "last"};
             for (uint32_t i = 1; i <= 3; ++i)
             {
-                SECTION(position[i - 1] +
-                        " transaction from same source account")
-                {
+                auto checkPos = [&](TestAccount& source) {
                     auto tx = transaction(*app, account1, i, 1, 100);
-                    auto fb = feeBump(*app, account1, tx, 4000);
+                    auto fb = feeBump(*app, source, tx, 4000);
                     txs[i - 1] = fb;
                     test.add(fb,
                              TransactionQueue::AddResult::ADD_STATUS_PENDING);
                     test.check({{{account1, 0, txs}, {account2}}, {}});
+                };
+                SECTION(position[i - 1] +
+                        " transaction from same source account")
+                {
+                    checkPos(account1);
                 }
                 SECTION(position[i - 1] +
                         " transaction from different source account")
                 {
-                    auto tx = transaction(*app, account1, i, 1, 100);
-                    auto fb = feeBump(*app, account2, tx, 4000);
-                    txs[i - 1] = fb;
-                    test.add(fb,
-                             TransactionQueue::AddResult::ADD_STATUS_PENDING);
-                    test.check({{{account1, 0, txs}, {account2}}, {}});
+                    checkPos(account2);
                 }
             }
         }
@@ -1212,7 +1405,6 @@ TEST_CASE("remove applied", "[herder][transactionqueue]")
     VirtualClock clock;
     auto cfg = getTestConfig();
     auto app = createTestApplication(clock, cfg);
-    app->start();
 
     auto& lm = app->getLedgerManager();
     auto& herder = static_cast<HerderImpl&>(app->getHerder());
@@ -1243,8 +1435,9 @@ TEST_CASE("remove applied", "[herder][transactionqueue]")
         herder.getPendingEnvelopes().putTxSet(txSet->getContentsHash(),
                                               ledgerSeq, txSet);
 
-        DigitalBitsValue sv{txSet->getContentsHash(), 2,
-                        xdr::xvector<UpgradeType, 6>{}, DIGITALBITS_VALUE_BASIC};
+        DigitalBitsValue sv = herder.makeDigitalBitsValue(txSet->getContentsHash(), 2,
+                                                  emptyUpgradeSteps,
+                                                  app->getConfig().NODE_SEED);
         herder.getHerderSCPDriver().valueExternalized(ledgerSeq,
                                                       xdr::xdr_to_opaque(sv));
     }
@@ -1253,4 +1446,225 @@ TEST_CASE("remove applied", "[herder][transactionqueue]")
     REQUIRE(herder.recvTransaction(tx4) ==
             TransactionQueue::AddResult::ADD_STATUS_PENDING);
     REQUIRE(tq.toTxSet({})->mTransactions.size() == 2);
+}
+
+static UnorderedSet<AssetPair, AssetPairHash>
+apVecToSet(std::vector<AssetPair> const& v)
+{
+    UnorderedSet<AssetPair, AssetPairHash> ret;
+    for (auto const& a : v)
+    {
+        ret.emplace(a);
+    }
+    return ret;
+}
+
+TEST_CASE("arbitrage tx identification",
+          "[herder][transactionqueue][arbitrage]")
+{
+    SecretKey aliceSec = txtest::getAccount("alice");
+    SecretKey bobSec = txtest::getAccount("bob");
+    SecretKey carolSec = txtest::getAccount("carol");
+
+    PublicKey alicePub = aliceSec.getPublicKey();
+    PublicKey bobPub = bobSec.getPublicKey();
+    PublicKey carolPub = carolSec.getPublicKey();
+
+    Asset xdb = txtest::makeNativeAsset();
+    Asset usd = txtest::makeAsset(aliceSec, "USD");
+    Asset eur = txtest::makeAsset(bobSec, "EUR");
+    Asset cny = txtest::makeAsset(carolSec, "CNY");
+    Asset gbp = txtest::makeAsset(carolSec, "GBP");
+    Asset inr = txtest::makeAsset(carolSec, "INR");
+    Asset mxn = txtest::makeAsset(carolSec, "MXN");
+    Asset chf = txtest::makeAsset(carolSec, "CHF");
+    Asset jpy = txtest::makeAsset(carolSec, "JPY");
+
+    TransactionEnvelope tx1, tx2, tx3, tx4, tx5, tx6, tx7;
+    tx1.type(ENVELOPE_TYPE_TX);
+    tx2.type(ENVELOPE_TYPE_TX);
+    tx3.type(ENVELOPE_TYPE_TX);
+    tx4.type(ENVELOPE_TYPE_TX);
+    tx5.type(ENVELOPE_TYPE_TX);
+    tx6.type(ENVELOPE_TYPE_TX);
+    tx7.type(ENVELOPE_TYPE_TX);
+
+    // Tx1 is a one-op XDB->USD->XDB loop.
+    tx1.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, xdb, 100, xdb, 100, {usd}));
+
+    // Tx2 is a two-op contiguous XDB->USD->EUR and EUR->CNY->XDB loop.
+    tx2.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, xdb, 100, eur, 100, {usd}));
+    tx2.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, eur, 100, xdb, 100, {cny}));
+
+    // Tx3 is a 4-op discontiguous loop: XDB->USD->CNY, GBP->INR->MXN,
+    // CNY->EUR->GBP, MXN->CHF->XDB.
+    tx3.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, xdb, 100, cny, 100, {usd}));
+    tx3.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, gbp, 100, mxn, 100, {inr}));
+    tx3.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, cny, 100, gbp, 100, {eur}));
+    tx3.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, mxn, 100, xdb, 100, {chf}));
+
+    // Tx4 is the same as Tx3 but the cycle is broken.
+    tx4.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, xdb, 100, cny, 100, {usd}));
+    tx4.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, gbp, 100, mxn, 100, {inr}));
+    tx4.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, cny, 100, jpy, 100, {eur}));
+    tx4.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, mxn, 100, xdb, 100, {chf}));
+
+    // Tx5 is a two-op contiguous USD->EUR->CNY->MXN and
+    // MXN->JPY->INR->USD loop.
+    tx5.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, usd, 100, mxn, 100, {eur, cny}));
+    tx5.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, mxn, 100, usd, 100, {jpy, inr}));
+
+    // Tx6 is a four-op pair of loops, formed discontiguously:
+    // XDB->USD->CNY, GBP->INR->MXN, CNY->EUR->XDB, MXN->CHF->GBP;
+    // We want to identify _both_ loops.
+    tx6.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, xdb, 100, cny, 100, {usd}));
+    tx6.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, gbp, 100, mxn, 100, {inr}));
+    tx6.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, cny, 100, xdb, 100, {eur}));
+    tx6.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, mxn, 100, gbp, 100, {chf}));
+
+    // Tx7 is a non-cycle that has 2 paths from the same source
+    // to the same destination.
+    tx7.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, usd, 100, mxn, 100, {eur, cny}));
+    tx7.v1().tx.operations.emplace_back(
+        txtest::pathPayment(bobPub, usd, 100, mxn, 100, {jpy, inr}));
+
+    auto tx1f = std::make_shared<TransactionFrame>(Hash(), tx1);
+    auto tx2f = std::make_shared<TransactionFrame>(Hash(), tx2);
+    auto tx3f = std::make_shared<TransactionFrame>(Hash(), tx3);
+    auto tx4f = std::make_shared<TransactionFrame>(Hash(), tx4);
+    auto tx5f = std::make_shared<TransactionFrame>(Hash(), tx5);
+    auto tx6f = std::make_shared<TransactionFrame>(Hash(), tx6);
+    auto tx7f = std::make_shared<TransactionFrame>(Hash(), tx7);
+
+    LOG_TRACE(DEFAULT_LOG, "Tx1 - 1 op / 3 asset contiguous loop");
+    REQUIRE(
+        apVecToSet(
+            TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(tx1f)) ==
+        UnorderedSet<AssetPair, AssetPairHash>{{xdb, usd}, {usd, xdb}});
+
+    LOG_TRACE(DEFAULT_LOG, "Tx2 - 2 op / 4 asset contiguous loop");
+    REQUIRE(
+        apVecToSet(TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(
+            tx2f)) == UnorderedSet<AssetPair, AssetPairHash>{
+                          {xdb, usd}, {usd, eur}, {eur, cny}, {cny, xdb}});
+
+    LOG_TRACE(DEFAULT_LOG, "Tx3 - 4 op / 8 asset discontiguous loop");
+    REQUIRE(
+        apVecToSet(TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(
+            tx3f)) == UnorderedSet<AssetPair, AssetPairHash>{{xdb, usd},
+                                                             {usd, cny},
+                                                             {cny, eur},
+                                                             {eur, gbp},
+                                                             {gbp, inr},
+                                                             {inr, mxn},
+                                                             {mxn, chf},
+                                                             {chf, xdb}});
+
+    LOG_TRACE(DEFAULT_LOG, "Tx4 - 4 op / 8 asset non-loop");
+    REQUIRE(
+        apVecToSet(TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(
+            tx4f)) == UnorderedSet<AssetPair, AssetPairHash>{});
+
+    LOG_TRACE(DEFAULT_LOG, "Tx5 - 2 op / 6 asset contiguous loop");
+    REQUIRE(
+        apVecToSet(TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(
+            tx5f)) == UnorderedSet<AssetPair, AssetPairHash>{{usd, eur},
+                                                             {eur, cny},
+                                                             {cny, mxn},
+                                                             {mxn, jpy},
+                                                             {jpy, inr},
+                                                             {inr, usd}});
+
+    LOG_TRACE(DEFAULT_LOG, "Tx6 - 4 op / 8 asset dual discontiguous loop");
+    REQUIRE(
+        apVecToSet(TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(
+            tx6f)) == UnorderedSet<AssetPair, AssetPairHash>{{xdb, usd},
+                                                             {usd, cny},
+                                                             {cny, eur},
+                                                             {eur, xdb},
+                                                             {gbp, inr},
+                                                             {inr, mxn},
+                                                             {mxn, chf},
+                                                             {chf, gbp}});
+
+    LOG_TRACE(DEFAULT_LOG, "Tx7 - 2 op / 6 asset non-loop");
+    REQUIRE(
+        apVecToSet(TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(
+            tx7f)) == UnorderedSet<AssetPair, AssetPairHash>{});
+}
+
+TEST_CASE("arbitrage tx identification benchmark",
+          "[herder][transactionqueue][arbitrage][bench][!hide]")
+{
+    // This test generates a tx with a single 600-step-long discontiguous loop
+    // formed from 100 7-step ops with 100 overlapping endpoints (forcing the
+    // use of the SCC checker) and then benchmarks how long it takes to check it
+    // for payment loops 100 times, giving a rough idea of how much time the
+    // arb-loop checker might take in the worst case in the middle of the
+    // txqueue flood loop.
+    SecretKey bobSec = txtest::getAccount("bob");
+    PublicKey bobPub = bobSec.getPublicKey();
+    Asset xdb = txtest::makeNativeAsset();
+
+    TransactionEnvelope tx1;
+    tx1.type(ENVELOPE_TYPE_TX);
+
+    Asset prev = xdb;
+    for (size_t i = 0; i < MAX_OPS_PER_TX / 2; ++i)
+    {
+        SecretKey carolSec = txtest::getAccount(fmt::format("carol{}", i));
+        Asset aaa = txtest::makeAsset(carolSec, "AAA");
+        Asset bbb = txtest::makeAsset(carolSec, "BBB");
+        Asset ccc = txtest::makeAsset(carolSec, "CCC");
+        Asset ddd = txtest::makeAsset(carolSec, "DDD");
+        Asset eee = txtest::makeAsset(carolSec, "EEE");
+        Asset fff = txtest::makeAsset(carolSec, "FFF");
+        Asset ggg = txtest::makeAsset(carolSec, "GGG");
+        Asset hhh = txtest::makeAsset(carolSec, "HHH");
+        Asset iii = txtest::makeAsset(carolSec, "III");
+        Asset jjj = txtest::makeAsset(carolSec, "JJJ");
+        Asset kkk = txtest::makeAsset(carolSec, "KKK");
+        Asset lll = txtest::makeAsset(carolSec, "LLL");
+        if (i == MAX_OPS_PER_TX / 2 - 1)
+        {
+            lll = xdb;
+        }
+        tx1.v1().tx.operations.emplace_back(txtest::pathPayment(
+            bobPub, fff, 100, lll, 100, {ggg, hhh, iii, jjj, kkk}));
+        tx1.v1().tx.operations.emplace_back(txtest::pathPayment(
+            bobPub, prev, 100, fff, 100, {aaa, bbb, ccc, ddd, eee}));
+        prev = lll;
+    }
+
+    auto tx1f = std::make_shared<TransactionFrame>(Hash(), tx1);
+
+    namespace ch = std::chrono;
+    using clock = ch::high_resolution_clock;
+    using usec = ch::microseconds;
+    auto start = clock::now();
+    for (size_t i = 0; i < 100; ++i)
+    {
+        TransactionQueue::findAllAssetPairsInvolvedInPaymentLoops(tx1f);
+    }
+    auto end = clock::now();
+    LOG_INFO(DEFAULT_LOG, "executed 100 loop-checks of 600-op tx loop in {}",
+             ch::duration_cast<ch::milliseconds>(end - start));
 }

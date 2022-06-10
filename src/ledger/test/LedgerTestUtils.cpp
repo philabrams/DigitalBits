@@ -94,6 +94,17 @@ randomlyModifyEntry(LedgerEntry& e)
         e.data.claimableBalance().amount = autocheck::generator<int64>{}();
         makeValid(e.data.claimableBalance());
         break;
+    case LIQUIDITY_POOL:
+        e.data.liquidityPool().body.constantProduct().reserveA =
+            autocheck::generator<int64>{}();
+        e.data.liquidityPool().body.constantProduct().reserveB =
+            autocheck::generator<int64>{}();
+        e.data.liquidityPool().body.constantProduct().totalPoolShares =
+            autocheck::generator<int64>{}();
+        e.data.liquidityPool().body.constantProduct().poolSharesTrustLineCount =
+            autocheck::generator<int64>{}();
+        makeValid(e.data.liquidityPool());
+        break;
     }
 }
 
@@ -109,7 +120,7 @@ makeValid(AccountEntry& a)
 
     if (a.inflationDest)
     {
-        *a.inflationDest = PubKeyUtils::random();
+        *a.inflationDest = PubKeyUtils::pseudoRandomForTesting();
     }
 
     std::sort(
@@ -131,7 +142,7 @@ makeValid(AccountEntry& a)
     {
         a.seqNum = -a.seqNum;
     }
-    a.flags = a.flags & MASK_ACCOUNT_FLAGS;
+    a.flags = a.flags & MASK_ACCOUNT_FLAGS_V17;
 
     if (a.ext.v() == 1)
     {
@@ -179,10 +190,27 @@ makeValid(TrustLineEntry& tl)
     }
     tl.limit = std::abs(tl.limit);
     clampLow<int64>(1, tl.limit);
-    tl.asset.type(ASSET_TYPE_CREDIT_ALPHANUM4);
-    strToAssetCode(tl.asset.alphaNum4().assetCode, "USD");
+
+    switch (tl.asset.type())
+    {
+    case ASSET_TYPE_NATIVE:
+        // ASSET_TYPE_NATIVE is not a valid trustline asset type, so change the
+        // type to a valid one
+        tl.asset.type(ASSET_TYPE_CREDIT_ALPHANUM4);
+        strToAssetCode(tl.asset.alphaNum4().assetCode, "USD");
+        break;
+    case ASSET_TYPE_CREDIT_ALPHANUM4:
+        strToAssetCode(tl.asset.alphaNum4().assetCode, "USD");
+        break;
+    case ASSET_TYPE_CREDIT_ALPHANUM12:
+        strToAssetCode(tl.asset.alphaNum12().assetCode, "USD12");
+        break;
+    default:
+        break;
+    }
+
     clampHigh<int64_t>(tl.limit, tl.balance);
-    tl.flags = tl.flags & MASK_TRUSTLINE_FLAGS;
+    tl.flags = tl.flags & MASK_TRUSTLINE_FLAGS_V17;
 
     if (tl.ext.v() == 1)
     {
@@ -235,6 +263,28 @@ makeValid(ClaimableBalanceEntry& c)
 
     c.asset.type(ASSET_TYPE_CREDIT_ALPHANUM4);
     strToAssetCode(c.asset.alphaNum4().assetCode, "CAD");
+
+    if (c.ext.v() == 1)
+    {
+        c.ext.v1().flags = MASK_CLAIMABLE_BALANCE_FLAGS;
+    }
+}
+
+void
+makeValid(LiquidityPoolEntry& lp)
+{
+    auto& cp = lp.body.constantProduct();
+    cp.params.assetA.type(ASSET_TYPE_CREDIT_ALPHANUM4);
+    strToAssetCode(cp.params.assetA.alphaNum4().assetCode, "CAD");
+
+    cp.params.assetB.type(ASSET_TYPE_CREDIT_ALPHANUM4);
+    strToAssetCode(cp.params.assetB.alphaNum4().assetCode, "USD");
+
+    cp.params.fee = 30;
+    cp.reserveA = std::abs(cp.reserveA);
+    cp.reserveB = std::abs(cp.reserveB);
+    cp.totalPoolShares = std::abs(cp.totalPoolShares);
+    cp.poolSharesTrustLineCount = std::abs(cp.poolSharesTrustLineCount);
 }
 
 void
@@ -246,7 +296,7 @@ makeValid(std::vector<LedgerHeaderHistoryEntry>& lhv,
     auto prevHash = firstLedger.header.previousLedgerHash;
     auto ledgerSeq = firstLedger.header.ledgerSeq;
 
-    for (auto i = 0; i < lhv.size(); i++)
+    for (size_t i = 0; i < lhv.size(); i++)
     {
         auto& lh = lhv[i];
 
@@ -262,7 +312,8 @@ makeValid(std::vector<LedgerHeaderHistoryEntry>& lhv,
                 lh.header.ledgerVersion += 1;
                 break;
             case HistoryManager::VERIFY_STATUS_ERR_BAD_HASH:
-                lh.header.previousLedgerHash = HashUtils::random();
+                lh.header.previousLedgerHash =
+                    HashUtils::pseudoRandomForTesting();
                 break;
             case HistoryManager::VERIFY_STATUS_ERR_UNDERSHOT:
                 lh.header.ledgerSeq -= 1;
@@ -278,7 +329,7 @@ makeValid(std::vector<LedgerHeaderHistoryEntry>& lhv,
         if (i == randomIndex &&
             state == HistoryManager::VERIFY_STATUS_ERR_BAD_HASH && rand_flip())
         {
-            lh.hash = HashUtils::random();
+            lh.hash = HashUtils::pseudoRandomForTesting();
         }
         else
         {
@@ -317,46 +368,56 @@ static auto validLedgerEntryGenerator = autocheck::map(
         case CLAIMABLE_BALANCE:
             makeValid(led.claimableBalance());
             break;
+        case LIQUIDITY_POOL:
+            makeValid(led.liquidityPool());
+            break;
         }
 
-        return le;
+        return std::move(le);
     },
     autocheck::generator<LedgerEntry>());
 
 static auto validAccountEntryGenerator = autocheck::map(
     [](AccountEntry&& ae, size_t s) {
         makeValid(ae);
-        return ae;
+        return std::move(ae);
     },
     autocheck::generator<AccountEntry>());
 
 static auto validTrustLineEntryGenerator = autocheck::map(
     [](TrustLineEntry&& tl, size_t s) {
         makeValid(tl);
-        return tl;
+        return std::move(tl);
     },
     autocheck::generator<TrustLineEntry>());
 
 static auto validOfferEntryGenerator = autocheck::map(
     [](OfferEntry&& o, size_t s) {
         makeValid(o);
-        return o;
+        return std::move(o);
     },
     autocheck::generator<OfferEntry>());
 
 static auto validDataEntryGenerator = autocheck::map(
     [](DataEntry&& d, size_t s) {
         makeValid(d);
-        return d;
+        return std::move(d);
     },
     autocheck::generator<DataEntry>());
 
 static auto validClaimableBalanceEntryGenerator = autocheck::map(
     [](ClaimableBalanceEntry&& c, size_t s) {
         makeValid(c);
-        return c;
+        return std::move(c);
     },
     autocheck::generator<ClaimableBalanceEntry>());
+
+static auto validLiquidityPoolEntryGenerator = autocheck::map(
+    [](LiquidityPoolEntry&& c, size_t s) {
+        makeValid(c);
+        return std::move(c);
+    },
+    autocheck::generator<LiquidityPoolEntry>());
 
 LedgerEntry
 generateValidLedgerEntry(size_t b)
@@ -382,6 +443,19 @@ generateValidAccountEntries(size_t n)
 {
     static auto vecgen = autocheck::list_of(validAccountEntryGenerator);
     return vecgen(n);
+}
+
+TrustLineEntry
+generateNonPoolShareValidTrustLineEntry(size_t b)
+{
+    auto tl = validTrustLineEntryGenerator(b);
+    if (tl.asset.type() == ASSET_TYPE_POOL_SHARE)
+    {
+        tl.asset.type(ASSET_TYPE_CREDIT_ALPHANUM4);
+        strToAssetCode(tl.asset.alphaNum4().assetCode, "USD");
+    }
+
+    return tl;
 }
 
 TrustLineEntry
@@ -434,6 +508,19 @@ generateValidClaimableBalanceEntries(size_t n)
 {
     static auto vecgen =
         autocheck::list_of(validClaimableBalanceEntryGenerator);
+    return vecgen(n);
+}
+
+LiquidityPoolEntry
+generateValidLiquidityPoolEntry(size_t b)
+{
+    return validLiquidityPoolEntryGenerator(b);
+}
+
+std::vector<LiquidityPoolEntry>
+generateValidLiquidityPoolEntries(size_t n)
+{
+    static auto vecgen = autocheck::list_of(validLiquidityPoolEntryGenerator);
     return vecgen(n);
 }
 

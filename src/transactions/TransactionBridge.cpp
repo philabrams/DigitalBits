@@ -4,6 +4,7 @@
 
 #include "transactions/TransactionBridge.h"
 #include "transactions/TransactionFrame.h"
+#include "util/GlobalChecks.h"
 
 namespace digitalbits
 {
@@ -78,7 +79,7 @@ getOperations(TransactionEnvelope& env)
     case ENVELOPE_TYPE_TX:
         return env.v1().tx.operations;
     case ENVELOPE_TYPE_TX_FEE_BUMP:
-        assert(env.feeBump().tx.innerTx.type() == ENVELOPE_TYPE_TX);
+        releaseAssert(env.feeBump().tx.innerTx.type() == ENVELOPE_TYPE_TX);
         return env.feeBump().tx.innerTx.v1().tx.operations;
     default:
         abort();
@@ -111,7 +112,16 @@ setFee(TransactionFramePtr tx, uint32_t fee)
 }
 
 void
-setMinTime(TransactionFramePtr tx, int64_t minTime)
+setMemo(TransactionFramePtr tx, Memo memo)
+{
+    auto& env = tx->getEnvelope();
+    Memo& m =
+        env.type() == ENVELOPE_TYPE_TX_V0 ? env.v0().tx.memo : env.v1().tx.memo;
+    m = memo;
+}
+
+void
+setMinTime(TransactionFramePtr tx, TimePoint minTime)
 {
     auto& env = tx->getEnvelope();
     auto& tb = env.type() == ENVELOPE_TYPE_TX_V0 ? env.v0().tx.timeBounds
@@ -120,7 +130,7 @@ setMinTime(TransactionFramePtr tx, int64_t minTime)
 }
 
 void
-setMaxTime(TransactionFramePtr tx, int64_t maxTime)
+setMaxTime(TransactionFramePtr tx, TimePoint maxTime)
 {
     auto& env = tx->getEnvelope();
     auto& tb = env.type() == ENVELOPE_TYPE_TX_V0 ? env.v0().tx.timeBounds

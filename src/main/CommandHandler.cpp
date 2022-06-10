@@ -21,6 +21,7 @@
 #include "transactions/TransactionBridge.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/StatusManager.h"
 #include <Tracy.hpp>
 #include <fmt/format.h>
@@ -34,9 +35,11 @@
 #include "ExternalQueue.h"
 
 #ifdef BUILD_TESTS
+#include "simulation/LoadGenerator.h"
 #include "test/TestAccount.h"
 #include "test/TxTests.h"
 #endif
+#include <optional>
 #include <regex>
 
 using std::placeholders::_1;
@@ -74,7 +77,7 @@ CommandHandler::CommandHandler(Application& app) : mApp(app)
 
     mServer->add404(std::bind(&CommandHandler::fileNotFound, this, _1, _2));
 
-    if (mApp.getConfig().MODE_STORES_HISTORY)
+    if (mApp.getConfig().modeStoresAnyHistory())
     {
         addRoute("dropcursor", &CommandHandler::dropcursor);
         addRoute("getcursor", &CommandHandler::getcursor);
@@ -135,7 +138,7 @@ CommandHandler::safeRouter(CommandHandler::HandlerRoute route,
     }
     catch (std::exception const& e)
     {
-        retStr = fmt::format(R"({{"exception": "{}"}})", e.what());
+        retStr = fmt::format(FMT_STRING(R"({{"exception": "{}"}})"), e.what());
     }
     catch (...)
     {
@@ -160,14 +163,14 @@ CommandHandler::fileNotFound(std::string const& params, std::string& retStr)
     retStr = "<b>Welcome to digitalbits-core!</b><p>";
     retStr +=
         "Supported HTTP commands are listed in the <a href=\""
-        "https://github.com/xdbfoundation/DigitalBits/blob/master/docs/software/"
+        "https://github.com/digitalbits/digitalbits-core/blob/master/docs/software/"
         "commands.md#http-commands"
         "\">docs</a> as well as in the man pages.</p>"
         "<p>Have fun!</p>";
 }
 
 template <typename T>
-digitalbits::optional<T>
+std::optional<T>
 parseOptionalParam(std::map<std::string, std::string> const& map,
                    std::string const& key)
 {
@@ -182,13 +185,13 @@ parseOptionalParam(std::map<std::string, std::string> const& map,
         if (str.fail() || !str.eof())
         {
             std::string errorMsg =
-                fmt::format("Failed to parse '{}' argument", key);
+                fmt::format(FMT_STRING("Failed to parse '{}' argument"), key);
             throw std::runtime_error(errorMsg);
         }
-        return digitalbits::make_optional<T>(val);
+        return std::make_optional<T>(val);
     }
 
-    return nullopt<T>();
+    return std::nullopt;
 }
 
 // If the key exists and the value successfully parses, return that value.
@@ -199,7 +202,7 @@ T
 parseOptionalParamOrDefault(std::map<std::string, std::string> const& map,
                             std::string const& key, T const& defaultValue)
 {
-    optional<T> res = parseOptionalParam<T>(map, key);
+    std::optional<T> res = parseOptionalParam<T>(map, key);
     if (res)
     {
         return *res;
@@ -220,7 +223,8 @@ parseRequiredParam(std::map<std::string, std::string> const& map,
     auto res = parseOptionalParam<T>(map, key);
     if (!res)
     {
-        std::string errorMsg = fmt::format("'{}' argument is required!", key);
+        std::string errorMsg =
+            fmt::format(FMT_STRING("'{}' argument is required!"), key);
         throw std::runtime_error(errorMsg);
     }
     return *res;
@@ -287,6 +291,8 @@ CommandHandler::peers(std::string const& params, std::string& retStr)
                 peerNode["olver"] = (int)peer.second->getRemoteOverlayVersion();
                 peerNode["id"] =
                     mApp.getConfig().toStrKey(peer.first, fullKeys);
+                peerNode["flow_control"] =
+                    peer.second->getFlowControlJsonInfo();
             }
         };
     addAuthenticatedPeers(
@@ -304,13 +310,67 @@ CommandHandler::info(std::string const&, std::string& retStr)
     retStr = mApp.getJsonInfo().toStyledString();
 }
 
+static bool
+shouldEnable(std::set<std::string> const& toEnable,
+             medida::MetricName const& name)
+{
+    // Enable individual metric name or a partition
+    if (toEnable.find(name.domain()) == toEnable.end() &&
+        toEnable.find(name.ToString()) == toEnable.end())
+    {
+        return false;
+    }
+    return true;
+}
+
 void
 CommandHandler::metrics(std::string const& params, std::string& retStr)
 {
     ZoneScoped;
+
+    std::map<std::string, std::string> retMap;
+    http::server::server::parseParams(params, retMap);
+    std::set<std::string> toEnable;
+
+    // Filter which metrics to report based on the parameters
+    auto metricToEnable = retMap.find("enable");
+    if (metricToEnable != retMap.end())
+    {
+        std::stringstream ss(metricToEnable->second);
+        std::string metric;
+
+        while (getline(ss, metric, ','))
+        {
+            toEnable.insert(metric);
+        }
+    }
+
     mApp.syncAllMetrics();
-    medida::reporting::JsonReporter jr(mApp.getMetrics());
-    retStr = jr.Report();
+
+    auto reportMetrics =
+        [&](std::map<medida::MetricName,
+                     std::shared_ptr<medida::MetricInterface>> const& metrics) {
+            medida::reporting::JsonReporter jr(metrics);
+            retStr = jr.Report();
+        };
+
+    if (!toEnable.empty())
+    {
+        std::map<medida::MetricName, std::shared_ptr<medida::MetricInterface>>
+            metricsToReport;
+        for (auto const& m : mApp.getMetrics().GetAllMetrics())
+        {
+            if (shouldEnable(toEnable, m.first))
+            {
+                metricsToReport.emplace(m);
+            }
+        }
+        reportMetrics(metricsToReport);
+    }
+    else
+    {
+        reportMetrics(mApp.getMetrics().GetAllMetrics());
+    }
 }
 
 void
@@ -468,19 +528,20 @@ CommandHandler::upgrades(std::string const& params, std::string& retStr)
         {
             tm = VirtualClock::isoStringToTm(upgradeTime);
         }
-        catch (std::exception)
+        catch (std::exception&)
         {
-            retStr =
-                fmt::format("could not parse upgradetime: '{}'", upgradeTime);
+            retStr = fmt::format(
+                FMT_STRING("could not parse upgradetime: '{}'"), upgradeTime);
             return;
         }
         p.mUpgradeTime = VirtualClock::tmToSystemPoint(tm);
 
         p.mBaseFee = parseOptionalParam<uint32>(retMap, "basefee");
         p.mBaseReserve = parseOptionalParam<uint32>(retMap, "basereserve");
-        p.mMaxTxSize = parseOptionalParam<uint32>(retMap, "maxtxsize");
+        p.mMaxTxSetSize = parseOptionalParam<uint32>(retMap, "maxtxsetsize");
         p.mProtocolVersion =
             parseOptionalParam<uint32>(retMap, "protocolversion");
+        p.mFlags = parseOptionalParam<uint32>(retMap, "flags");
 
         mApp.getHerder().setUpgrades(p);
     }
@@ -491,7 +552,7 @@ CommandHandler::upgrades(std::string const& params, std::string& retStr)
     }
     else
     {
-        retStr = fmt::format("Unknown mode: {}", s);
+        retStr = fmt::format(FMT_STRING("Unknown mode: {}"), s);
     }
 }
 
@@ -499,7 +560,12 @@ void
 CommandHandler::selfCheck(std::string const&, std::string& retStr)
 {
     ZoneScoped;
-    mApp.getHistoryArchiveManager().scheduleHistoryArchiveReportWork();
+    // NB: this only runs the online "self-check" routine; running the
+    // offline "self-check" from command-line will also do an expensive,
+    // synchronous database-vs-bucketlist consistency check. We can't do
+    // that online since it would block for so long that the node would
+    // lose sync. So we just omit it here.
+    mApp.scheduleSelfCheck(true);
 }
 
 void
@@ -572,7 +638,7 @@ CommandHandler::ll(std::string const& params, std::string& retStr)
     }
     else
     {
-        el::Level level = Logging::getLLfromString(levelStr);
+        LogLevel level = Logging::getLLfromString(levelStr);
         if (partition.size())
         {
             partition = Logging::normalizePartition(partition);
@@ -606,7 +672,8 @@ CommandHandler::tx(std::string const& params, std::string& retStr)
 
         {
             auto lhhe = mApp.getLedgerManager().getLastClosedLedgerHeader();
-            if (lhhe.header.ledgerVersion >= 13)
+            if (protocolVersionStartsFrom(lhhe.header.ledgerVersion,
+                                          ProtocolVersion::V_13))
             {
                 envelope = txbridge::convertForV13(envelope);
             }
@@ -620,14 +687,6 @@ CommandHandler::tx(std::string const& params, std::string& retStr)
             // and make sure it is valid
             TransactionQueue::AddResult status =
                 mApp.getHerder().recvTransaction(transaction);
-
-            if (status == TransactionQueue::AddResult::ADD_STATUS_PENDING)
-            {
-                DigitalBitsMessage msg;
-                msg.type(TRANSACTION);
-                msg.transaction() = envelope;
-                mApp.getOverlayManager().broadcastMessage(msg);
-            }
 
             output << "{"
                    << "\"status\": "
@@ -758,13 +817,21 @@ CommandHandler::clearMetrics(std::string const& params, std::string& retStr)
 
     mApp.clearMetrics(domain);
 
-    retStr = fmt::format("Cleared {} metrics!", domain);
+    retStr = fmt::format(FMT_STRING("Cleared {} metrics!"), domain);
 }
 
 void
 CommandHandler::surveyTopology(std::string const& params, std::string& retStr)
 {
     ZoneScoped;
+
+    if (mApp.getState() == Application::APP_CREATED_STATE ||
+        mApp.getHerder().getState() == Herder::HERDER_BOOTING_STATE)
+    {
+        throw std::runtime_error(
+            "Application is not fully booted, try again later");
+    }
+
     std::map<std::string, std::string> map;
     http::server::server::parseParams(params, map);
 
@@ -812,21 +879,9 @@ CommandHandler::generateLoad(std::string const& params, std::string& retStr)
         std::map<std::string, std::string> map;
         http::server::server::parseParams(params, map);
 
-        bool isCreate;
-        std::string mode =
-            parseOptionalParamOrDefault<std::string>(map, "mode", "create");
-        if (mode == std::string("create"))
-        {
-            isCreate = true;
-        }
-        else if (mode == std::string("pay"))
-        {
-            isCreate = false;
-        }
-        else
-        {
-            throw std::runtime_error("Unknown mode.");
-        }
+        LoadGenMode mode = LoadGenerator::getMode(
+            parseOptionalParamOrDefault<std::string>(map, "mode", "create"));
+        bool isCreate = mode == LoadGenMode::CREATE;
 
         uint32_t nAccounts =
             parseOptionalParamOrDefault<uint32_t>(map, "accounts", 1000);
@@ -852,11 +907,12 @@ CommandHandler::generateLoad(std::string const& params, std::string& retStr)
             retStr = "Setting batch size to its limit of 100.";
         }
 
-        mApp.generateLoad(isCreate, nAccounts, offset, nTxs, txRate, batchSize,
+        mApp.generateLoad(mode, nAccounts, offset, nTxs, txRate, batchSize,
                           spikeInterval, spikeSize);
 
-        retStr += fmt::format(" Generating load: {:d} {:s}, {:d} tx/s",
-                              numItems, itemType, txRate);
+        retStr +=
+            fmt::format(FMT_STRING(" Generating load: {:d} {:s}, {:d} tx/s"),
+                        numItems, itemType, txRate);
     }
     else
     {
@@ -959,7 +1015,8 @@ CommandHandler::testTx(std::string const& params, std::string& retStr)
         root["status"] = TX_STATUS_STRING[static_cast<int>(status)];
         if (status == TransactionQueue::AddResult::ADD_STATUS_ERROR)
         {
-            root["detail"] = xdr_to_string(txFrame->getResult().result.code());
+            root["detail"] = xdr_to_string(txFrame->getResult().result.code(),
+                                           "TransactionResultCode");
         }
     }
     else

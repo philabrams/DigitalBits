@@ -9,6 +9,7 @@
 #include "medida/timer.h"
 #include "scp/SCPDriver.h"
 #include "xdr/DigitalBits-ledger.h"
+#include <optional>
 
 namespace medida
 {
@@ -32,53 +33,13 @@ struct SCPEnvelope;
 class HerderSCPDriver : public SCPDriver
 {
   public:
-    struct ConsensusData
-    {
-        uint64_t mConsensusIndex;
-        DigitalBitsValue mConsensusValue;
-        ConsensusData(uint64_t index, DigitalBitsValue const& b)
-            : mConsensusIndex(index), mConsensusValue(b)
-        {
-        }
-    };
-
     HerderSCPDriver(Application& app, HerderImpl& herder,
                     Upgrades const& upgrades,
                     PendingEnvelopes& pendingEnvelopes);
     ~HerderSCPDriver();
 
     void bootstrap();
-    void lostSync();
-
-    Herder::State getState() const;
-
-    ConsensusData*
-    trackingSCP() const
-    {
-        return mTrackingSCP.get();
-    }
-    ConsensusData*
-    lastTrackingSCP() const
-    {
-        return mLastTrackingSCP.get();
-    }
-
-    void restoreSCPState(uint64_t index, DigitalBitsValue const& value);
-
-    // the ledger index that was last externalized
-    uint32
-    lastConsensusLedgerIndex() const
-    {
-        assert(mTrackingSCP->mConsensusIndex <= UINT32_MAX);
-        return static_cast<uint32>(mTrackingSCP->mConsensusIndex);
-    }
-
-    // the ledger index that we expect to externalize next
-    uint32
-    nextConsensusLedgerIndex() const
-    {
-        return lastConsensusLedgerIndex() + 1;
-    }
+    void stateChanged();
 
     SCP&
     getSCP()
@@ -104,7 +65,7 @@ class HerderSCPDriver : public SCPDriver
                                       Value const& value) override;
 
     // value marshaling
-    std::string toShortString(PublicKey const& pk) const override;
+    std::string toShortString(NodeID const& pk) const override;
     std::string getValueString(Value const& v) const override;
 
     // timer handling
@@ -141,7 +102,7 @@ class HerderSCPDriver : public SCPDriver
                                  SCPBallot const& ballot) override;
     void acceptedCommit(uint64_t slotIndex, SCPBallot const& ballot) override;
 
-    optional<VirtualClock::time_point> getPrepareStart(uint64_t slotIndex);
+    std::optional<VirtualClock::time_point> getPrepareStart(uint64_t slotIndex);
 
     // converts a Value into a DigitalBitsValue
     // returns false on error
@@ -159,14 +120,6 @@ class HerderSCPDriver : public SCPDriver
     // clean up older slots
     void purgeSlots(uint64_t maxSlotIndex);
 
-    // Does the nomination protocol output a BASIC or a SIGNED
-    // DigitalBitsValue?
-    virtual DigitalBitsValueType compositeValueType() const;
-
-    // Does the current protocol version contain the CAP-0034 closeTime
-    // semantics change?
-    bool curProtocolPreservesTxSetCloseTimeAffinity() const;
-
     double getExternalizeLag(NodeID const& id) const;
 
     Json::Value getQsetLagInfo(bool summary, bool fullKeys);
@@ -178,8 +131,6 @@ class HerderSCPDriver : public SCPDriver
     Upgrades const& mUpgrades;
     PendingEnvelopes& mPendingEnvelopes;
     SCP mSCP;
-
-    static uint32_t const FIRST_PROTOCOL_WITH_TXSET_CLOSETIME_AFFINITY;
 
     struct SCPMetrics
     {
@@ -196,8 +147,8 @@ class HerderSCPDriver : public SCPDriver
         medida::Timer& mPrepareToExternalize;
 
         // Timers tracking externalize messages
-        medida::Timer& mExternalizeLag;
-        medida::Timer& mExternalizeDelay;
+        medida::Timer& mFirstToSelfExternalizeLag;
+        medida::Timer& mSelfToOthersExternalizeLag;
 
         SCPMetrics(Application& app);
     };
@@ -214,8 +165,8 @@ class HerderSCPDriver : public SCPDriver
 
     struct SCPTiming
     {
-        optional<VirtualClock::time_point> mNominationStart;
-        optional<VirtualClock::time_point> mPrepareStart;
+        std::optional<VirtualClock::time_point> mNominationStart;
+        std::optional<VirtualClock::time_point> mPrepareStart;
 
         // Nomination timeouts before first prepare
         int64_t mNominationTimeoutCount{0};
@@ -223,8 +174,8 @@ class HerderSCPDriver : public SCPDriver
         int64_t mPrepareTimeoutCount{0};
 
         // externalize timing information
-        optional<VirtualClock::time_point> mFirstExternalize;
-        optional<VirtualClock::time_point> mSelfExternalize;
+        std::optional<VirtualClock::time_point> mFirstExternalize;
+        std::optional<VirtualClock::time_point> mSelfExternalize;
     };
 
     // Map of time points for each slot to measure key protocol metrics:
@@ -238,20 +189,6 @@ class HerderSCPDriver : public SCPDriver
     // timers used by SCP
     // indexed by slotIndex, timerID
     std::map<uint64_t, std::map<int, std::unique_ptr<VirtualTimer>>> mSCPTimers;
-
-    // if the local instance is tracking the current state of SCP
-    // herder keeps track of the consensus index and ballot
-    // when not set, it just means that herder will try to snap to any slot that
-    // reached consensus
-    // on startup, this can be set to a value persisted from the database
-    std::unique_ptr<ConsensusData> mTrackingSCP;
-
-    // when losing track of consensus, we remember the consensus value so that
-    // we can ignore older ledgers (as we potentially receive old messages)
-    // it only tracks actual consensus values (learned when externalizing)
-    std::unique_ptr<ConsensusData> mLastTrackingSCP;
-
-    void stateChanged();
 
     SCPDriver::ValidationLevel validateValueHelper(uint64_t slotIndex,
                                                    DigitalBitsValue const& sv,

@@ -46,10 +46,9 @@ VerifyTxResultsWork::onRun()
 
     std::weak_ptr<VerifyTxResultsWork> weak(
         std::static_pointer_cast<VerifyTxResultsWork>(shared_from_this()));
-    auto verify = [ weak, checkpoint = mCheckpoint ]()
-    {
+    auto verify = [weak, checkpoint = mCheckpoint]() {
         auto self = weak.lock();
-        if (self)
+        if (self && !self->isAborting())
         {
             ZoneScoped;
             asio::error_code ec;
@@ -104,11 +103,8 @@ VerifyTxResultsWork::verifyTxResultsOfCheckpoint()
             auto txResultEntry = getCurrentTxResultSet(ledgerSeq);
             auto resultSetHash =
                 sha256(xdr::xdr_to_opaque(txResultEntry.txResultSet));
-            // Check for the genesis ledger, as well as the first fee ledger with
-            // ledgerSeq of LedgerManager::GENESIS_LEDGER_SEQ + 1 
-            auto genesis = (ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ ||
-                           ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ + 1)
-                           && txResultEntry.txResultSet.results.empty();
+            auto genesis = ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ &&
+                           txResultEntry.txResultSet.results.empty();
 
             if (!genesis && resultSetHash != curr.header.txSetResultHash)
             {

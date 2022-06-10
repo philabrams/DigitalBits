@@ -5,15 +5,14 @@
 #include "crypto/SHA.h"
 #include "crypto/SecretKey.h"
 #include "lib/catch.hpp"
+#include "lib/util/stdrandom.h"
 #include "main/Config.h"
 #include "scp/QuorumSetUtils.h"
 #include "test/test.h"
 #include "util/Math.h"
-#include <filesystem>
 #include <fmt/format.h>
 
 using namespace digitalbits;
-namespace fs = std::filesystem;
 
 namespace
 {
@@ -24,21 +23,6 @@ keyMatches(PublicKey& key, const std::vector<std::string>& keys)
     auto keyStr = KeyUtils::toStrKey<PublicKey>(key);
     return std::any_of(std::begin(keys), std::end(keys),
                        [&](const std::string& x) { return keyStr == x; });
-}
-
-std::string getTestDataFolder() 
-{
-    fs::path cwd = fs::current_path();
-
-    std::string testDataPath = "";
-
-    if (cwd.filename() != "src") {
-        testDataPath = "src/testdata/";
-    } else {
-        testDataPath = "testdata/";
-    }
-
-    return testDataPath;
 }
 }
 
@@ -112,7 +96,7 @@ TEST_CASE("resolve node id", "[config]")
         REQUIRE(!result);
     }
 
-    SECTION("node alias abbrevation")
+    SECTION("node alias abbreviation")
     {
         auto publicKey = PublicKey{};
         auto result = cfg.resolveNodeID("$core", publicKey);
@@ -163,8 +147,7 @@ TEST_CASE("resolve node id", "[config]")
 TEST_CASE("load validators config", "[config]")
 {
     Config c;
-    auto fnPath = getTestDataFolder();
-    c.load(fnPath + "digitalbits-core_example_validators.cfg");
+    c.load("testdata/digitalbits-core_example_validators.cfg");
     auto actualS = c.toString(c.QUORUM_SET);
     std::string expected = R"({
    "t" : 4,
@@ -230,7 +213,8 @@ TEST_CASE("load validators config", "[config]")
 )";
 
     REQUIRE(actualS == expected);
-    REQUIRE(c.KNOWN_PEERS.size() == 15);
+    REQUIRE(c.KNOWN_PEERS.size() == 13);
+    REQUIRE(c.PREFERRED_PEERS.size() == 2); // 2 other "domainA" validators
     REQUIRE(c.HISTORY.size() == 20);
 }
 
@@ -407,10 +391,11 @@ TEST_CASE("load example configs", "[config]")
     Config c;
     std::vector<std::string> testFiles = {
         "digitalbits-core_example.cfg", "digitalbits-core_standalone.cfg",
-        "digitalbits-core_testnet_legacy.cfg", "digitalbits-core_testnet.cfg"};
+        "digitalbits-core_testnet_legacy.cfg", "digitalbits-core_testnet.cfg",
+        "digitalbits-core_testnet_validator.cfg"};
     for (auto const& fn : testFiles)
     {
-        std::string fnPath = getTestDataFolder();
+        std::string fnPath = "testdata/";
         fnPath += fn;
         SECTION("load config " + fnPath)
         {
@@ -508,7 +493,7 @@ TEST_CASE("operation filter configuration", "[config]")
     }
 
     // Test random subsets that are not necessarily in the typical order
-    std::uniform_int_distribution<size_t> dist(
+    digitalbits::uniform_int_distribution<size_t> dist(
         0, OperationTypeTraits::enum_values().size() - 1);
     for (size_t i = 0; i < 5; ++i)
     {
@@ -517,7 +502,7 @@ TEST_CASE("operation filter configuration", "[config]")
         {
             vals.emplace_back(static_cast<OperationType>(v));
         }
-        std::shuffle(vals.begin(), vals.end(), gRandomEngine);
+        digitalbits::shuffle(vals.begin(), vals.end(), gRandomEngine);
         vals.resize(dist(gRandomEngine));
         loadConfig(vals);
     }

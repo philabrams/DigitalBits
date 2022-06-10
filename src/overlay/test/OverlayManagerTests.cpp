@@ -32,12 +32,14 @@ class PeerStub : public Peer
   public:
     int sent = 0;
 
-    PeerStub(Application& app, PeerBareAddress const& addres)
+    PeerStub(Application& app, PeerBareAddress const& address)
         : Peer(app, WE_CALLED_REMOTE)
     {
         mPeerID = SecretKey::pseudoRandomForTesting().getPublicKey();
         mState = GOT_AUTH;
-        mAddress = addres;
+        mAddress = address;
+        mOutboundCapacity = std::numeric_limits<uint32>::max();
+        mFlowControlState = Peer::FlowControlState::ENABLED;
     }
     virtual std::string
     getIP() const override
@@ -53,6 +55,10 @@ class PeerStub : public Peer
     sendMessage(xdr::msg_ptr&& xdrBytes) override
     {
         sent++;
+    }
+    virtual void
+    scheduleRead() override
+    {
     }
 };
 
@@ -147,7 +153,7 @@ class OverlayManagerTests
                          << "SELECT ip,port,type FROM peers ORDER BY ip, port";
 
         auto& ppeers = pm.mConfigurationPreferredPeers;
-        int i = 0;
+        size_t i = 0;
         for (auto it = rs.begin(); it != rs.end(); ++it, ++i)
         {
 
@@ -241,8 +247,8 @@ class OverlayManagerTests
     {
         OverlayManagerStub& pm = app->getOverlayManager();
 
-        auto fourPeersAddresses = pm.resolvePeers(fourPeers);
-        auto threePeersAddresses = pm.resolvePeers(threePeers);
+        auto fourPeersAddresses = pm.resolvePeers(fourPeers).first;
+        auto threePeersAddresses = pm.resolvePeers(threePeers).first;
         pm.storePeerList(fourPeersAddresses, false, true);
         pm.storePeerList(threePeersAddresses, false, true);
 

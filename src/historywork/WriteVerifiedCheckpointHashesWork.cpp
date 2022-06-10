@@ -98,7 +98,7 @@ WriteVerifiedCheckpointHashesWork::yieldMoreWork()
 
     auto const lclHe = mApp.getLedgerManager().getLastClosedLedgerHeader();
     LedgerNumHashPair const lcl(lclHe.header.ledgerSeq,
-                                digitalbits::make_optional<Hash>(lclHe.hash));
+                                std::make_optional<Hash>(lclHe.hash));
     uint32_t const span = mNestedBatchSize * freq;
     uint32_t const last = mCurrCheckpoint;
     uint32_t const first =
@@ -140,7 +140,7 @@ WriteVerifiedCheckpointHashesWork::yieldMoreWork()
     auto currWork = std::make_shared<VerifyLedgerChainWork>(
         mApp, *tmpDir, ledgerRange, lcl, prevTrusted, mOutputFile);
     auto prevWork = mPrevVerifyWork;
-    auto predicate = [prevWork]() {
+    auto predicate = [prevWork](Application&) {
         if (!prevWork)
         {
             return true;

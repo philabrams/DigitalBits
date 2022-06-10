@@ -10,6 +10,7 @@
 #include "medida/counter.h"
 #include "medida/metrics_registry.h"
 #include "overlay/OverlayManager.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "xdrpp/marshal.h"
@@ -68,7 +69,7 @@ Floodgate::addRecord(DigitalBitsMessage const& msg, Peer::pointer peer, Hash& in
     if (result == mFloodMap.end())
     { // we have never seen this message
         mFloodMap[index] = std::make_shared<FloodRecord>(
-            msg, mApp.getHerder().getCurrentLedgerSeq(), peer);
+            msg, mApp.getHerder().trackingConsensusLedgerIndex(), peer);
         mFloodMapSize.set_count(mFloodMap.size());
         TracyPlot("overlay.memory.flood-known",
                   static_cast<int64_t>(mFloodMap.size()));
@@ -82,13 +83,13 @@ Floodgate::addRecord(DigitalBitsMessage const& msg, Peer::pointer peer, Hash& in
 }
 
 // send message to anyone you haven't gotten it from
-void
+bool
 Floodgate::broadcast(DigitalBitsMessage const& msg, bool force)
 {
     ZoneScoped;
     if (mShuttingDown)
     {
-        return;
+        return false;
     }
     Hash index = xdrBlake2(msg);
 
@@ -97,7 +98,8 @@ Floodgate::broadcast(DigitalBitsMessage const& msg, bool force)
     if (result == mFloodMap.end() || force)
     { // no one has sent us this message / start from scratch
         fr = std::make_shared<FloodRecord>(
-            msg, mApp.getHerder().getCurrentLedgerSeq(), Peer::pointer());
+            msg, mApp.getHerder().trackingConsensusLedgerIndex(),
+            Peer::pointer());
         mFloodMap[index] = fr;
         mFloodMapSize.set_count(mFloodMap.size());
     }
@@ -111,32 +113,32 @@ Floodgate::broadcast(DigitalBitsMessage const& msg, bool force)
     // make a copy, in case peers gets modified
     auto peers = mApp.getOverlayManager().getAuthenticatedPeers();
 
-    bool log = true;
-    std::shared_ptr<DigitalBitsMessage> smsg =
-        std::make_shared<DigitalBitsMessage>(msg);
+    bool broadcasted = false;
+    auto smsg = std::make_shared<DigitalBitsMessage const>(msg);
     for (auto peer : peers)
     {
-        assert(peer.second->isAuthenticated());
-        if (peersTold.find(peer.second->toString()) == peersTold.end())
+        releaseAssert(peer.second->isAuthenticated());
+        if (peersTold.insert(peer.second->toString()).second)
         {
             mSendFromBroadcast.Mark();
             std::weak_ptr<Peer> weak(
                 std::static_pointer_cast<Peer>(peer.second));
             mApp.postOnMainThread(
-                [smsg, weak, log]() {
+                [smsg, weak, log = !broadcasted]() {
                     auto strong = weak.lock();
                     if (strong)
                     {
-                        strong->sendMessage(*smsg, log);
+                        strong->sendMessage(smsg, log);
                     }
                 },
-                fmt::format("broadcast to {}", peer.second->toString()));
-            peersTold.insert(peer.second->toString());
-            log = false;
+                fmt::format(FMT_STRING("broadcast to {}"),
+                            peer.second->toString()));
+            broadcasted = true;
         }
     }
     CLOG_TRACE(Overlay, "broadcast {} told {}", hexAbbrev(index),
                peersTold.size());
+    return broadcasted;
 }
 
 std::set<Peer::pointer>

@@ -9,6 +9,7 @@
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnHeader.h"
 #include "lib/catch.hpp"
+#include "lib/util/stdrandom.h"
 #include "main/Application.h"
 #include "test/TestUtils.h"
 #include "test/test.h"
@@ -43,7 +44,7 @@ getCoinsAboveReserve(std::vector<LedgerEntry> const& entries, Application& app)
 
 std::vector<LedgerEntry>
 updateBalances(std::vector<LedgerEntry> entries, Application& app,
-               int64_t netChange)
+               int64_t netChange, bool updateTotalCoins)
 {
     int64_t initialCoins = getTotalBalance(entries);
     int64_t pool = netChange + getCoinsAboveReserve(entries, app);
@@ -60,8 +61,8 @@ updateBalances(std::vector<LedgerEntry> entries, Application& app,
             int64_t maxDecrease = minBalance - account.balance;
             int64_t maxIncrease = pool;
             REQUIRE(maxIncrease >= maxDecrease);
-            std::uniform_int_distribution<int64_t> dist(maxDecrease,
-                                                        maxIncrease);
+            digitalbits::uniform_int_distribution<int64_t> dist(maxDecrease,
+                                                            maxIncrease);
             delta = dist(gRandomEngine);
         }
         else
@@ -79,9 +80,18 @@ updateBalances(std::vector<LedgerEntry> entries, Application& app,
     auto finalCoins = getTotalBalance(entries);
     REQUIRE(initialCoins + netChange == finalCoins);
 
-    LedgerTxn ltx(app.getLedgerTxnRoot());
-    ltx.loadHeader().current().totalCoins += netChange;
-    ltx.commit();
+    if (updateTotalCoins)
+    {
+        LedgerTxn ltx(app.getLedgerTxnRoot());
+        auto& current = ltx.loadHeader().current();
+        REQUIRE(current.totalCoins >= 0);
+        if (netChange > 0)
+        {
+            REQUIRE(current.totalCoins <= INT64_MAX - netChange);
+        }
+        current.totalCoins += netChange;
+        ltx.commit();
+    }
     return entries;
 }
 
@@ -96,10 +106,10 @@ updateBalances(std::vector<LedgerEntry> const& entries, Application& app)
         totalCoins = ltx.loadHeader().current().totalCoins;
     }
 
-    std::uniform_int_distribution<int64_t> dist(totalCoins - coinsAboveReserve,
-                                                INT64_MAX);
+    digitalbits::uniform_int_distribution<int64_t> dist(
+        totalCoins - coinsAboveReserve, INT64_MAX);
     int64_t newTotalCoins = dist(gRandomEngine);
-    return updateBalances(entries, app, newTotalCoins - totalCoins);
+    return updateBalances(entries, app, newTotalCoins - totalCoins, true);
 }
 
 TEST_CASE("Total coins change without inflation",
@@ -108,7 +118,7 @@ TEST_CASE("Total coins change without inflation",
     Config cfg = getTestConfig(0);
     cfg.INVARIANT_CHECKS = {"ConservationOfDigitalBits"};
 
-    std::uniform_int_distribution<int64_t> dist(0, INT64_MAX);
+    digitalbits::uniform_int_distribution<int64_t> dist(0, INT64_MAX);
 
     VirtualClock clock;
     Application::pointer app = createTestApplication(clock, cfg);
@@ -127,7 +137,7 @@ TEST_CASE("Fee pool change without inflation",
     Config cfg = getTestConfig(0);
     cfg.INVARIANT_CHECKS = {"ConservationOfDigitalBits"};
 
-    std::uniform_int_distribution<int64_t> dist(0, INT64_MAX);
+    digitalbits::uniform_int_distribution<int64_t> dist(0, INT64_MAX);
 
     VirtualClock clock;
     Application::pointer app = createTestApplication(clock, cfg);
@@ -195,7 +205,7 @@ TEST_CASE("Account balances unchanged without inflation",
             REQUIRE(!store(*app, updates));
         }
 
-        auto entries2 = updateBalances(entries1, *app, 0);
+        auto entries2 = updateBalances(entries1, *app, 0, false);
         {
             auto updates = makeUpdateList(entries2, entries1);
             REQUIRE(store(*app, updates));
@@ -205,7 +215,7 @@ TEST_CASE("Account balances unchanged without inflation",
         std::vector<LedgerEntry> entries3(entries2.begin(), keepEnd);
         std::vector<LedgerEntry> toDelete(keepEnd, entries2.end());
         int64_t balanceToDelete = getTotalBalance(toDelete);
-        auto entries4 = updateBalances(entries3, *app, balanceToDelete);
+        auto entries4 = updateBalances(entries3, *app, balanceToDelete, false);
         {
             auto updates = makeUpdateList(entries4, entries3);
             auto updates2 = makeUpdateList(nullptr, toDelete);
@@ -220,8 +230,8 @@ TEST_CASE("Inflation changes are consistent",
 {
     Config cfg = getTestConfig(0);
     cfg.INVARIANT_CHECKS = {"ConservationOfDigitalBits"};
-    std::uniform_int_distribution<uint32_t> payoutsDist(1, 100);
-    std::uniform_int_distribution<int64_t> amountDist(1, 100000);
+    digitalbits::uniform_int_distribution<uint32_t> payoutsDist(1, 100);
+    digitalbits::uniform_int_distribution<int64_t> amountDist(1, 100000);
 
     uint32_t const N = 10;
     for (uint32_t i = 0; i < 100; ++i)
@@ -251,7 +261,7 @@ TEST_CASE("Inflation changes are consistent",
                             return ip;
                         });
 
-        std::uniform_int_distribution<int64_t> deltaFeePoolDist(
+        digitalbits::uniform_int_distribution<int64_t> deltaFeePoolDist(
             0, 2 * inflationAmount);
         auto deltaFeePool = deltaFeePoolDist(gRandomEngine);
 
@@ -273,7 +283,7 @@ TEST_CASE("Inflation changes are consistent",
                               InvariantDoesNotHold);
         }
 
-        auto entries2 = updateBalances(entries1, *app, inflationAmount);
+        auto entries2 = updateBalances(entries1, *app, inflationAmount, true);
         {
             LedgerTxn ltx(app->getLedgerTxnRoot());
             ltx.loadHeader().current().feePool += deltaFeePool;

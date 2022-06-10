@@ -4,16 +4,17 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
-#include "util/optional.h"
+#include "util/GlobalChecks.h"
 #include "xdr/DigitalBits-types.h"
 #include <cstdint>
+#include <optional>
 #include <stdexcept>
 
 namespace digitalbits
 {
 // Ledger seq num + hash pair, a lightweight substitute of ledger
 // history entry, useful for catchup and ledger verification purposes.
-using LedgerNumHashPair = std::pair<uint32_t, optional<Hash>>;
+using LedgerNumHashPair = std::pair<uint32_t, std::optional<Hash>>;
 
 // Represents a half-open range of ledgers [first, first+count).
 // If count is zero, this represents _no_ ledgers.
@@ -29,7 +30,7 @@ struct LedgerRange final
     {
         // LedgerRange is half-open: in exchange for being able to represent
         // empty ranges, it can't represent ranges that include UINT32_MAX.
-        assert(last < std::numeric_limits<uint32_t>::max());
+        releaseAssert(last < std::numeric_limits<uint32_t>::max());
         return LedgerRange(first, last - first + 1);
     }
     std::string toString() const;

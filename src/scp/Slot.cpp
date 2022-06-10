@@ -5,7 +5,6 @@
 #include "Slot.h"
 
 #include "crypto/Hex.h"
-#include "crypto/SHA.h"
 #include "lib/json/json.h"
 #include "main/ErrorMessages.h"
 #include "scp/LocalNode.h"
@@ -83,10 +82,8 @@ Slot::setStateFromEnvelope(SCPEnvelopeWrapperPtr env)
     }
     else
     {
-        if (Logging::logTrace("SCP"))
-            CLOG_TRACE(SCP,
-                       "Slot::setStateFromEnvelope invalid envelope i: {} {}",
-                       getSlotIndex(), mSCP.envToStr(e));
+        CLOG_TRACE(SCP, "Slot::setStateFromEnvelope invalid envelope i: {} {}",
+                   getSlotIndex(), mSCP.envToStr(e));
     }
 }
 
@@ -107,6 +104,40 @@ Slot::getLatestMessage(NodeID const& id) const
         m = mNominationProtocol.getLatestMessage(id);
     }
     return m;
+}
+
+bool
+Slot::isNewerNominationOrBallotSt(SCPStatement const& oldSt,
+                                  SCPStatement const& newSt)
+{
+    bool oldNomination =
+        oldSt.pledges.type() == SCPStatementType::SCP_ST_NOMINATE;
+    bool newNomination =
+        newSt.pledges.type() == SCPStatementType::SCP_ST_NOMINATE;
+
+    if (oldNomination != newNomination)
+    {
+        return false;
+    }
+
+    bool replace = false;
+    if (oldNomination)
+    {
+        if (NominationProtocol::isNewerStatement(oldSt.pledges.nominate(),
+                                                 newSt.pledges.nominate()))
+        {
+            replace = true;
+        }
+    }
+    else
+    {
+        if (BallotProtocol::isNewerStatement(oldSt, newSt))
+        {
+            replace = true;
+        }
+    }
+
+    return replace;
 }
 
 std::vector<SCPEnvelope>
@@ -130,9 +161,8 @@ Slot::processEnvelope(SCPEnvelopeWrapperPtr envelope, bool self)
 {
     dbgAssert(envelope->getStatement().slotIndex == mSlotIndex);
 
-    if (Logging::logTrace("SCP"))
-        CLOG_TRACE(SCP, "Slot::processEnvelope i: {} {}", getSlotIndex(),
-                   mSCP.envToStr(envelope->getEnvelope()));
+    CLOG_TRACE(SCP, "Slot::processEnvelope i: {} {}", getSlotIndex(),
+               mSCP.envToStr(envelope->getEnvelope()));
 
     SCP::EnvelopeState res;
 
@@ -339,6 +369,17 @@ Slot::getJsonInfo(bool fullKeys)
     ret["ballotProtocol"] = mBallotProtocol.getJsonInfo();
 
     return ret;
+}
+
+SCP::QuorumInfoNodeState
+Slot::getState(NodeID const& node, bool selfAlreadyMovedOn)
+{
+    auto b = mBallotProtocol.getState(node, selfAlreadyMovedOn);
+    if (b != SCP::QuorumInfoNodeState::NO_INFO)
+    {
+        return b;
+    }
+    return mNominationProtocol.getState(node, selfAlreadyMovedOn);
 }
 
 Json::Value

@@ -7,6 +7,12 @@
 namespace digitalbits
 {
 
+union LiquidityPoolParameters switch (LiquidityPoolType type)
+{
+case LIQUIDITY_POOL_CONSTANT_PRODUCT:
+    LiquidityPoolConstantProductParameters constantProduct;
+};
+
 // Source or destination of a payment operation
 union MuxedAccount switch (CryptoKeyType type)
 {
@@ -46,7 +52,12 @@ enum OperationType
     CLAIM_CLAIMABLE_BALANCE = 15,
     BEGIN_SPONSORING_FUTURE_RESERVES = 16,
     END_SPONSORING_FUTURE_RESERVES = 17,
-    REVOKE_SPONSORSHIP = 18
+    REVOKE_SPONSORSHIP = 18,
+    CLAWBACK = 19,
+    CLAWBACK_CLAIMABLE_BALANCE = 20,
+    SET_TRUST_LINE_FLAGS = 21,
+    LIQUIDITY_POOL_DEPOSIT = 22,
+    LIQUIDITY_POOL_WITHDRAW = 23
 };
 
 /* CreateAccount
@@ -176,7 +187,7 @@ struct CreatePassiveSellOfferOp
 {
     Asset selling; // A
     Asset buying;  // B
-    int64 amount;  // amount taker gets. if set to 0, delete the offer
+    int64 amount;  // amount taker gets
     Price price;   // cost of A in terms of B
 };
 
@@ -209,6 +220,23 @@ struct SetOptionsOp
     Signer* signer;
 };
 
+union ChangeTrustAsset switch (AssetType type)
+{
+case ASSET_TYPE_NATIVE: // Not credit
+    void;
+
+case ASSET_TYPE_CREDIT_ALPHANUM4:
+    AlphaNum4 alphaNum4;
+
+case ASSET_TYPE_CREDIT_ALPHANUM12:
+    AlphaNum12 alphaNum12;
+
+case ASSET_TYPE_POOL_SHARE:
+    LiquidityPoolParameters liquidityPool;
+
+    // add other asset types here in the future
+};
+
 /* Creates, updates or deletes a trust line
 
     Threshold: med
@@ -218,7 +246,7 @@ struct SetOptionsOp
 */
 struct ChangeTrustOp
 {
-    Asset line;
+    ChangeTrustAsset line;
 
     // if limit is set to 0, deletes the trust line
     int64 limit;
@@ -236,20 +264,9 @@ struct ChangeTrustOp
 struct AllowTrustOp
 {
     AccountID trustor;
-    union switch (AssetType type)
-    {
-    // ASSET_TYPE_NATIVE is not allowed
-    case ASSET_TYPE_CREDIT_ALPHANUM4:
-        AssetCode4 assetCode4;
+    AssetCode asset;
 
-    case ASSET_TYPE_CREDIT_ALPHANUM12:
-        AssetCode12 assetCode12;
-
-        // add other asset types here in the future
-    }
-    asset;
-
-    // 0, or any bitwise combination of TrustLineFlags
+    // One of 0, AUTHORIZED_FLAG, or AUTHORIZED_TO_MAINTAIN_LIABILITIES_FLAG
     uint32 authorize;
 };
 
@@ -372,8 +389,80 @@ case REVOKE_SPONSORSHIP_SIGNER:
     {
         AccountID accountID;
         SignerKey signerKey;
-    }
-    signer;
+    } signer;
+};
+
+/* Claws back an amount of an asset from an account
+
+    Threshold: med
+
+    Result: ClawbackResult
+*/
+struct ClawbackOp
+{
+    Asset asset;
+    MuxedAccount from;
+    int64 amount;
+};
+
+/* Claws back a claimable balance
+
+    Threshold: med
+
+    Result: ClawbackClaimableBalanceResult
+*/
+struct ClawbackClaimableBalanceOp
+{
+    ClaimableBalanceID balanceID;
+};
+
+/* SetTrustLineFlagsOp
+
+   Updates the flags of an existing trust line.
+   This is called by the issuer of the related asset.
+
+   Threshold: low
+
+   Result: SetTrustLineFlagsResult
+*/
+struct SetTrustLineFlagsOp
+{
+    AccountID trustor;
+    Asset asset;
+
+    uint32 clearFlags; // which flags to clear
+    uint32 setFlags;   // which flags to set
+};
+
+const LIQUIDITY_POOL_FEE_V18 = 30;
+
+/* Deposit assets into a liquidity pool
+
+    Threshold: med
+
+    Result: LiquidityPoolDepositResult
+*/
+struct LiquidityPoolDepositOp
+{
+    PoolID liquidityPoolID;
+    int64 maxAmountA;     // maximum amount of first asset to deposit
+    int64 maxAmountB;     // maximum amount of second asset to deposit
+    Price minPrice;       // minimum depositA/depositB
+    Price maxPrice;       // maximum depositA/depositB
+};
+
+/* Withdraw assets from a liquidity pool
+
+    Threshold: med
+
+    Result: LiquidityPoolWithdrawResult
+*/
+struct LiquidityPoolWithdrawOp
+{
+    PoolID liquidityPoolID;
+    int64 amount;         // amount of pool shares to withdraw
+    int64 minAmountA;     // minimum amount of first asset to withdraw
+    int64 minAmountB;     // minimum amount of second asset to withdraw
 };
 
 /* An operation is the lowest unit of work that a transaction does */
@@ -424,19 +513,38 @@ struct Operation
         void;
     case REVOKE_SPONSORSHIP:
         RevokeSponsorshipOp revokeSponsorshipOp;
+    case CLAWBACK:
+        ClawbackOp clawbackOp;
+    case CLAWBACK_CLAIMABLE_BALANCE:
+        ClawbackClaimableBalanceOp clawbackClaimableBalanceOp;
+    case SET_TRUST_LINE_FLAGS:
+        SetTrustLineFlagsOp setTrustLineFlagsOp;
+    case LIQUIDITY_POOL_DEPOSIT:
+        LiquidityPoolDepositOp liquidityPoolDepositOp;
+    case LIQUIDITY_POOL_WITHDRAW:
+        LiquidityPoolWithdrawOp liquidityPoolWithdrawOp;
     }
     body;
 };
 
-union OperationID switch (EnvelopeType type)
+union HashIDPreimage switch (EnvelopeType type)
 {
 case ENVELOPE_TYPE_OP_ID:
     struct
     {
-        MuxedAccount sourceAccount;
+        AccountID sourceAccount;
         SequenceNumber seqNum;
         uint32 opNum;
-    } id;
+    } operationID;
+case ENVELOPE_TYPE_POOL_REVOKE_OP_ID:
+    struct
+    {
+        AccountID sourceAccount;
+        SequenceNumber seqNum;
+        uint32 opNum;
+        PoolID liquidityPoolID;
+        Asset asset;
+    } revokeID;
 };
 
 enum MemoType
@@ -596,7 +704,33 @@ struct TransactionSignaturePayload
 
 /* Operation Results section */
 
-/* This result is used when offers are taken during an operation */
+enum ClaimAtomType
+{
+    CLAIM_ATOM_TYPE_V0 = 0,
+    CLAIM_ATOM_TYPE_ORDER_BOOK = 1,
+    CLAIM_ATOM_TYPE_LIQUIDITY_POOL = 2
+};
+
+// ClaimOfferAtomV0 is a ClaimOfferAtom with the AccountID discriminant stripped
+// off, leaving a raw ed25519 public key to identify the source account. This is
+// used for backwards compatibility starting from the protocol 17/18 boundary.
+// If an "old-style" ClaimOfferAtom is parsed with this XDR definition, it will
+// be parsed as a "new-style" ClaimAtom containing a ClaimOfferAtomV0.
+struct ClaimOfferAtomV0
+{
+    // emitted to identify the offer
+    uint256 sellerEd25519; // Account that owns the offer
+    int64 offerID;
+
+    // amount and asset taken from the owner
+    Asset assetSold;
+    int64 amountSold;
+
+    // amount and asset sent to the owner
+    Asset assetBought;
+    int64 amountBought;
+};
+
 struct ClaimOfferAtom
 {
     // emitted to identify the offer
@@ -610,6 +744,32 @@ struct ClaimOfferAtom
     // amount and asset sent to the owner
     Asset assetBought;
     int64 amountBought;
+};
+
+struct ClaimLiquidityAtom
+{
+    PoolID liquidityPoolID;
+
+    // amount and asset taken from the pool
+    Asset assetSold;
+    int64 amountSold;
+
+    // amount and asset sent to the pool
+    Asset assetBought;
+    int64 amountBought;
+};
+
+/* This result is used when offers are taken or liquidity is exchanged with a
+   liquidity pool during an operation
+*/
+union ClaimAtom switch (ClaimAtomType type)
+{
+case CLAIM_ATOM_TYPE_V0:
+    ClaimOfferAtomV0 v0;
+case CLAIM_ATOM_TYPE_ORDER_BOOK:
+    ClaimOfferAtom orderBook;
+case CLAIM_ATOM_TYPE_LIQUIDITY_POOL:
+    ClaimLiquidityAtom liquidityPool;
 };
 
 /******* CreateAccount Result ********/
@@ -640,7 +800,7 @@ default:
 enum PaymentResultCode
 {
     // codes considered as "success" for the operation
-    PAYMENT_SUCCESS = 0, // payment successfuly completed
+    PAYMENT_SUCCESS = 0, // payment successfully completed
 
     // codes considered as "failure" for the operation
     PAYMENT_MALFORMED = -1,          // bad input
@@ -706,7 +866,7 @@ union PathPaymentStrictReceiveResult switch (
 case PATH_PAYMENT_STRICT_RECEIVE_SUCCESS:
     struct
     {
-        ClaimOfferAtom offers<>;
+        ClaimAtom offers<>;
         SimplePaymentResult last;
     } success;
 case PATH_PAYMENT_STRICT_RECEIVE_NO_ISSUER:
@@ -750,7 +910,7 @@ union PathPaymentStrictSendResult switch (PathPaymentStrictSendResultCode code)
 case PATH_PAYMENT_STRICT_SEND_SUCCESS:
     struct
     {
-        ClaimOfferAtom offers<>;
+        ClaimAtom offers<>;
         SimplePaymentResult last;
     } success;
 case PATH_PAYMENT_STRICT_SEND_NO_ISSUER:
@@ -798,7 +958,7 @@ enum ManageOfferEffect
 struct ManageOfferSuccessResult
 {
     // offers that got claimed while creating this offer
-    ClaimOfferAtom offersClaimed<>;
+    ClaimAtom offersClaimed<>;
 
     union switch (ManageOfferEffect effect)
     {
@@ -868,7 +1028,9 @@ enum SetOptionsResultCode
     SET_OPTIONS_UNKNOWN_FLAG = -6,           // can't set an unknown flag
     SET_OPTIONS_THRESHOLD_OUT_OF_RANGE = -7, // bad value for weight/threshold
     SET_OPTIONS_BAD_SIGNER = -8,             // signer cannot be masterkey
-    SET_OPTIONS_INVALID_HOME_DOMAIN = -9     // malformed home domain
+    SET_OPTIONS_INVALID_HOME_DOMAIN = -9,    // malformed home domain
+    SET_OPTIONS_AUTH_REVOCABLE_REQUIRED =
+        -10 // auth revocable is required for clawback
 };
 
 union SetOptionsResult switch (SetOptionsResultCode code)
@@ -892,7 +1054,10 @@ enum ChangeTrustResultCode
                                      // cannot create with a limit of 0
     CHANGE_TRUST_LOW_RESERVE =
         -4, // not enough funds to create a new trust line,
-    CHANGE_TRUST_SELF_NOT_ALLOWED = -5 // trusting self is not allowed
+    CHANGE_TRUST_SELF_NOT_ALLOWED = -5, // trusting self is not allowed
+    CHANGE_TRUST_TRUST_LINE_MISSING = -6, // Asset trustline is missing for pool
+    CHANGE_TRUST_CANNOT_DELETE = -7, // Asset trustline is still referenced in a pool
+    CHANGE_TRUST_NOT_AUTH_MAINTAIN_LIABILITIES = -8 // Asset trustline is deauthorized
 };
 
 union ChangeTrustResult switch (ChangeTrustResultCode code)
@@ -915,7 +1080,9 @@ enum AllowTrustResultCode
                                     // source account does not require trust
     ALLOW_TRUST_TRUST_NOT_REQUIRED = -3,
     ALLOW_TRUST_CANT_REVOKE = -4,     // source account can't revoke trust,
-    ALLOW_TRUST_SELF_NOT_ALLOWED = -5 // trusting self is not allowed
+    ALLOW_TRUST_SELF_NOT_ALLOWED = -5, // trusting self is not allowed
+    ALLOW_TRUST_LOW_RESERVE = -6 // claimable balances can't be created
+                                 // on revoke due to low reserves
 };
 
 union AllowTrustResult switch (AllowTrustResultCode code)
@@ -946,7 +1113,7 @@ enum AccountMergeResultCode
 union AccountMergeResult switch (AccountMergeResultCode code)
 {
 case ACCOUNT_MERGE_SUCCESS:
-    int64 sourceAccountBalance; // how much got transfered from source account
+    int64 sourceAccountBalance; // how much got transferred from source account
 default:
     void;
 };
@@ -1071,7 +1238,8 @@ enum BeginSponsoringFutureReservesResultCode
     BEGIN_SPONSORING_FUTURE_RESERVES_RECURSIVE = -3
 };
 
-union BeginSponsoringFutureReservesResult switch (BeginSponsoringFutureReservesResultCode code)
+union BeginSponsoringFutureReservesResult switch (
+    BeginSponsoringFutureReservesResultCode code)
 {
 case BEGIN_SPONSORING_FUTURE_RESERVES_SUCCESS:
     void;
@@ -1090,7 +1258,8 @@ enum EndSponsoringFutureReservesResultCode
     END_SPONSORING_FUTURE_RESERVES_NOT_SPONSORED = -1
 };
 
-union EndSponsoringFutureReservesResult switch (EndSponsoringFutureReservesResultCode code)
+union EndSponsoringFutureReservesResult switch (
+    EndSponsoringFutureReservesResultCode code)
 {
 case END_SPONSORING_FUTURE_RESERVES_SUCCESS:
     void;
@@ -1109,12 +1278,138 @@ enum RevokeSponsorshipResultCode
     REVOKE_SPONSORSHIP_DOES_NOT_EXIST = -1,
     REVOKE_SPONSORSHIP_NOT_SPONSOR = -2,
     REVOKE_SPONSORSHIP_LOW_RESERVE = -3,
-    REVOKE_SPONSORSHIP_ONLY_TRANSFERABLE = -4
+    REVOKE_SPONSORSHIP_ONLY_TRANSFERABLE = -4,
+    REVOKE_SPONSORSHIP_MALFORMED = -5
 };
 
 union RevokeSponsorshipResult switch (RevokeSponsorshipResultCode code)
 {
 case REVOKE_SPONSORSHIP_SUCCESS:
+    void;
+default:
+    void;
+};
+
+/******* Clawback Result ********/
+
+enum ClawbackResultCode
+{
+    // codes considered as "success" for the operation
+    CLAWBACK_SUCCESS = 0,
+
+    // codes considered as "failure" for the operation
+    CLAWBACK_MALFORMED = -1,
+    CLAWBACK_NOT_CLAWBACK_ENABLED = -2,
+    CLAWBACK_NO_TRUST = -3,
+    CLAWBACK_UNDERFUNDED = -4
+};
+
+union ClawbackResult switch (ClawbackResultCode code)
+{
+case CLAWBACK_SUCCESS:
+    void;
+default:
+    void;
+};
+
+/******* ClawbackClaimableBalance Result ********/
+
+enum ClawbackClaimableBalanceResultCode
+{
+    // codes considered as "success" for the operation
+    CLAWBACK_CLAIMABLE_BALANCE_SUCCESS = 0,
+
+    // codes considered as "failure" for the operation
+    CLAWBACK_CLAIMABLE_BALANCE_DOES_NOT_EXIST = -1,
+    CLAWBACK_CLAIMABLE_BALANCE_NOT_ISSUER = -2,
+    CLAWBACK_CLAIMABLE_BALANCE_NOT_CLAWBACK_ENABLED = -3
+};
+
+union ClawbackClaimableBalanceResult switch (
+    ClawbackClaimableBalanceResultCode code)
+{
+case CLAWBACK_CLAIMABLE_BALANCE_SUCCESS:
+    void;
+default:
+    void;
+};
+
+/******* SetTrustLineFlags Result ********/
+
+enum SetTrustLineFlagsResultCode
+{
+    // codes considered as "success" for the operation
+    SET_TRUST_LINE_FLAGS_SUCCESS = 0,
+
+    // codes considered as "failure" for the operation
+    SET_TRUST_LINE_FLAGS_MALFORMED = -1,
+    SET_TRUST_LINE_FLAGS_NO_TRUST_LINE = -2,
+    SET_TRUST_LINE_FLAGS_CANT_REVOKE = -3,
+    SET_TRUST_LINE_FLAGS_INVALID_STATE = -4,
+    SET_TRUST_LINE_FLAGS_LOW_RESERVE = -5 // claimable balances can't be created
+                                          // on revoke due to low reserves
+};
+
+union SetTrustLineFlagsResult switch (SetTrustLineFlagsResultCode code)
+{
+case SET_TRUST_LINE_FLAGS_SUCCESS:
+    void;
+default:
+    void;
+};
+
+/******* LiquidityPoolDeposit Result ********/
+
+enum LiquidityPoolDepositResultCode
+{
+    // codes considered as "success" for the operation
+    LIQUIDITY_POOL_DEPOSIT_SUCCESS = 0,
+
+    // codes considered as "failure" for the operation
+    LIQUIDITY_POOL_DEPOSIT_MALFORMED = -1,      // bad input
+    LIQUIDITY_POOL_DEPOSIT_NO_TRUST = -2,       // no trust line for one of the
+                                                // assets
+    LIQUIDITY_POOL_DEPOSIT_NOT_AUTHORIZED = -3, // not authorized for one of the
+                                                // assets
+    LIQUIDITY_POOL_DEPOSIT_UNDERFUNDED = -4,    // not enough balance for one of
+                                                // the assets
+    LIQUIDITY_POOL_DEPOSIT_LINE_FULL = -5,      // pool share trust line doesn't
+                                                // have sufficient limit
+    LIQUIDITY_POOL_DEPOSIT_BAD_PRICE = -6,      // deposit price outside bounds
+    LIQUIDITY_POOL_DEPOSIT_POOL_FULL = -7       // pool reserves are full
+};
+
+union LiquidityPoolDepositResult switch (
+    LiquidityPoolDepositResultCode code)
+{
+case LIQUIDITY_POOL_DEPOSIT_SUCCESS:
+    void;
+default:
+    void;
+};
+
+/******* LiquidityPoolWithdraw Result ********/
+
+enum LiquidityPoolWithdrawResultCode
+{
+    // codes considered as "success" for the operation
+    LIQUIDITY_POOL_WITHDRAW_SUCCESS = 0,
+
+    // codes considered as "failure" for the operation
+    LIQUIDITY_POOL_WITHDRAW_MALFORMED = -1,      // bad input
+    LIQUIDITY_POOL_WITHDRAW_NO_TRUST = -2,       // no trust line for one of the
+                                                 // assets
+    LIQUIDITY_POOL_WITHDRAW_UNDERFUNDED = -3,    // not enough balance of the
+                                                 // pool share
+    LIQUIDITY_POOL_WITHDRAW_LINE_FULL = -4,      // would go above limit for one
+                                                 // of the assets
+    LIQUIDITY_POOL_WITHDRAW_UNDER_MINIMUM = -5   // didn't withdraw enough
+};
+
+union LiquidityPoolWithdrawResult switch (
+    LiquidityPoolWithdrawResultCode code)
+{
+case LIQUIDITY_POOL_WITHDRAW_SUCCESS:
     void;
 default:
     void;
@@ -1176,6 +1471,16 @@ case opINNER:
         EndSponsoringFutureReservesResult endSponsoringFutureReservesResult;
     case REVOKE_SPONSORSHIP:
         RevokeSponsorshipResult revokeSponsorshipResult;
+    case CLAWBACK:
+        ClawbackResult clawbackResult;
+    case CLAWBACK_CLAIMABLE_BALANCE:
+        ClawbackClaimableBalanceResult clawbackClaimableBalanceResult;
+    case SET_TRUST_LINE_FLAGS:
+        SetTrustLineFlagsResult setTrustLineFlagsResult;
+    case LIQUIDITY_POOL_DEPOSIT:
+        LiquidityPoolDepositResult liquidityPoolDepositResult;
+    case LIQUIDITY_POOL_WITHDRAW:
+        LiquidityPoolWithdrawResult liquidityPoolWithdrawResult;
     }
     tr;
 default:
@@ -1199,7 +1504,7 @@ enum TransactionResultCode
     txNO_ACCOUNT = -8,           // source account not found
     txINSUFFICIENT_FEE = -9,     // fee is too small
     txBAD_AUTH_EXTRA = -10,      // unused signatures attached to transaction
-    txINTERNAL_ERROR = -11,      // an unknown error occured
+    txINTERNAL_ERROR = -11,      // an unknown error occurred
 
     txNOT_SUPPORTED = -12,         // transaction type not supported
     txFEE_BUMP_INNER_FAILED = -13, // fee bump inner transaction failed

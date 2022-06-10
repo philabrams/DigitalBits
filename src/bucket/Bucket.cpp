@@ -1,3 +1,6 @@
+// ASIO is somewhat particular about when it gets included -- it wants to be the
+// first to include <windows.h> -- so we try to include it before everything
+// else.
 #include "util/asio.h"
 #include "bucket/Bucket.h"
 #include "bucket/BucketApplicator.h"
@@ -13,12 +16,12 @@
 #include "main/Application.h"
 #include "medida/timer.h"
 #include "util/Fs.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/TmpDir.h"
 #include "util/XDRStream.h"
 #include "xdrpp/message.h"
 #include <Tracy.hpp>
-#include <cassert>
 #include <fmt/format.h>
 #include <future>
 
@@ -28,7 +31,7 @@ namespace digitalbits
 Bucket::Bucket(std::string const& filename, Hash const& hash)
     : mFilename(filename), mHash(hash)
 {
-    assert(filename.empty() || fs::exists(filename));
+    releaseAssert(filename.empty() || fs::exists(filename));
     if (!filename.empty())
     {
         CLOG_TRACE(Bucket, "Bucket::Bucket() created, file exists : {}",
@@ -75,12 +78,19 @@ Bucket::containsBucketIdentity(BucketEntry const& id) const
     return false;
 }
 
+#ifdef BUILD_TESTS
 void
 Bucket::apply(Application& app) const
 {
     ZoneScoped;
-    BucketApplicator applicator(app, app.getConfig().LEDGER_PROTOCOL_VERSION,
-                                shared_from_this());
+
+    BucketApplicator applicator(
+        app, app.getConfig().LEDGER_PROTOCOL_VERSION,
+        0 /*set to 0 so we always load from the parent to check state*/,
+        0 /*set to a level that's not the bottom so we don't treat live entries
+             as init*/
+        ,
+        shared_from_this(), [](LedgerEntryType) { return true; });
     BucketApplicator::Counters counters(app.getClock().now());
     while (applicator)
     {
@@ -88,6 +98,7 @@ Bucket::apply(Application& app) const
     }
     counters.logInfo("direct", 0, app.getClock().now());
 }
+#endif // BUILD_TESTS
 
 std::vector<BucketEntry>
 Bucket::convertToBucketEntry(bool useInit,
@@ -120,11 +131,11 @@ Bucket::convertToBucketEntry(bool useInit,
 
     BucketEntryIdCmp cmp;
     std::sort(bucket.begin(), bucket.end(), cmp);
-    assert(std::adjacent_find(
-               bucket.begin(), bucket.end(),
-               [&cmp](BucketEntry const& lhs, BucketEntry const& rhs) {
-                   return !cmp(lhs, rhs);
-               }) == bucket.end());
+    releaseAssert(std::adjacent_find(
+                      bucket.begin(), bucket.end(),
+                      [&cmp](BucketEntry const& lhs, BucketEntry const& rhs) {
+                          return !cmp(lhs, rhs);
+                      }) == bucket.end());
     return bucket;
 }
 
@@ -139,8 +150,8 @@ Bucket::fresh(BucketManager& bucketManager, uint32_t protocolVersion,
     // When building fresh buckets after protocol version 10 (i.e. version
     // 11-or-after) we differentiate INITENTRY from LIVEENTRY. In older
     // protocols, for compatibility sake, we mark both cases as LIVEENTRY.
-    bool useInit =
-        (protocolVersion >= FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
+    bool useInit = protocolVersionStartsFrom(
+        protocolVersion, FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY);
 
     BucketMetadata meta;
     meta.ledgerVersion = protocolVersion;
@@ -186,11 +197,13 @@ void
 Bucket::checkProtocolLegality(BucketEntry const& entry,
                               uint32_t protocolVersion)
 {
-    if (protocolVersion < FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY &&
+    if (protocolVersionIsBefore(
+            protocolVersion,
+            FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY) &&
         (entry.type() == INITENTRY || entry.type() == METAENTRY))
     {
         throw std::runtime_error(fmt::format(
-            "unsupported entry type {} in protocol {} bucket",
+            FMT_STRING("unsupported entry type {} in protocol {:d} bucket"),
             (entry.type() == INITENTRY ? "INIT" : "META"), protocolVersion));
     }
 }
@@ -360,7 +373,8 @@ calculateMergeProtocolVersion(
     for (auto const& si : shadowIterators)
     {
         auto version = si.getMetadata().ledgerVersion;
-        if (version < Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED)
+        if (protocolVersionIsBefore(version,
+                                    Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED))
         {
             protocolVersion = std::max(version, protocolVersion);
         }
@@ -372,7 +386,8 @@ calculateMergeProtocolVersion(
     if (protocolVersion > maxProtocolVersion)
     {
         throw std::runtime_error(fmt::format(
-            "bucket protocol version {} exceeds maxProtocolVersion {}",
+            FMT_STRING(
+                "bucket protocol version {:d} exceeds maxProtocolVersion {:d}"),
             protocolVersion, maxProtocolVersion));
     }
 
@@ -381,8 +396,9 @@ calculateMergeProtocolVersion(
     // support annihilation of INITENTRY and DEADENTRY pairs. See commentary
     // above in `maybePut`.
     keepShadowedLifecycleEntries = true;
-    if (protocolVersion <
-        Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY)
+    if (protocolVersionIsBefore(
+            protocolVersion,
+            Bucket::FIRST_PROTOCOL_SUPPORTING_INITENTRY_AND_METAENTRY))
     {
         ++mc.mPreInitEntryProtocolMerges;
         keepShadowedLifecycleEntries = false;
@@ -392,7 +408,8 @@ calculateMergeProtocolVersion(
         ++mc.mPostInitEntryProtocolMerges;
     }
 
-    if (protocolVersion < Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED)
+    if (protocolVersionIsBefore(protocolVersion,
+                                Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED))
     {
         ++mc.mPreShadowRemovalProtocolMerges;
     }
@@ -593,8 +610,8 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
     // buckets together into a new 3rd bucket, while calculating its hash,
     // in a single pass.
 
-    assert(oldBucket);
-    assert(newBucket);
+    releaseAssert(oldBucket);
+    releaseAssert(newBucket);
 
     MergeCounters mc;
     BucketInputIterator oi(oldBucket);
@@ -653,7 +670,15 @@ Bucket::merge(BucketManager& bucketManager, uint32_t maxProtocolVersion,
 uint32_t
 Bucket::getBucketVersion(std::shared_ptr<Bucket> const& bucket)
 {
-    assert(bucket);
+    releaseAssert(bucket);
+    BucketInputIterator it(bucket);
+    return it.getMetadata().ledgerVersion;
+}
+
+uint32_t
+Bucket::getBucketVersion(std::shared_ptr<Bucket const> const& bucket)
+{
+    releaseAssert(bucket);
     BucketInputIterator it(bucket);
     return it.getMetadata().ledgerVersion;
 }

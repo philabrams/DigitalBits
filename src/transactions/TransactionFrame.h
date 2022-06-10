@@ -7,6 +7,7 @@
 #include "ledger/InternalLedgerEntry.h"
 #include "overlay/DigitalBitsXDR.h"
 #include "transactions/TransactionFrameBase.h"
+#include "util/GlobalChecks.h"
 #include "util/types.h"
 
 #include <memory>
@@ -74,7 +75,7 @@ class TransactionFrame : public TransactionFrameBase
                               uint64_t lowerBoundCloseTimeOffset,
                               uint64_t upperBoundCloseTimeOffset);
 
-    virtual bool isBadSeq(int64_t seqNum) const;
+    virtual bool isBadSeq(LedgerTxnHeader const& header, int64_t seqNum) const;
 
     ValidationType commonValid(SignatureChecker& signatureChecker,
                                AbstractLedgerTxn& ltxOuter,
@@ -123,7 +124,7 @@ class TransactionFrame : public TransactionFrameBase
     getOperations() const
     {
         // this can only be used on an initialized TransactionFrame
-        assert(!mOperations.empty());
+        releaseAssert(!mOperations.empty());
         return mOperations;
     }
 
@@ -157,6 +158,7 @@ class TransactionFrame : public TransactionFrameBase
     AccountID getSourceID() const override;
 
     uint32_t getNumOperations() const override;
+    std::vector<Operation> const& getRawOperations() const override;
 
     int64_t getFeeBid() const override;
 
@@ -186,7 +188,7 @@ class TransactionFrame : public TransactionFrameBase
     void insertKeysForTxApply(UnorderedSet<LedgerKey>& keys) const override;
 
     // collect fee, consume sequence number
-    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID) override;
+    void processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee) override;
 
     // apply this transaction to the current ledger
     // returns true if successfully applied

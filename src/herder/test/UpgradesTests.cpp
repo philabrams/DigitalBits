@@ -16,6 +16,7 @@
 #include "ledger/TrustLineWrapper.h"
 #include "lib/catch.hpp"
 #include "simulation/Simulation.h"
+#include "test/TestExceptions.h"
 #include "test/TestMarket.h"
 #include "test/TestUtils.h"
 #include "test/test.h"
@@ -24,8 +25,8 @@
 #include "transactions/TransactionUtils.h"
 #include "util/StatusManager.h"
 #include "util/Timer.h"
-#include "util/optional.h"
 #include <fmt/format.h>
+#include <optional>
 #include <xdrpp/marshal.h>
 
 using namespace digitalbits;
@@ -96,8 +97,8 @@ simulateUpgrade(std::vector<LedgerUpgradeNode> const& nodes,
     qSet.validators.push_back(keys[1].getPublicKey());
     qSet.validators.push_back(keys[2].getPublicKey());
 
-    auto setUpgrade = [](optional<uint32>& o, uint32 v) {
-        o = make_optional<uint32>(v);
+    auto setUpgrade = [](std::optional<uint32>& o, uint32 v) {
+        o = std::make_optional<uint32>(v);
     };
     // create nodes
     for (size_t i = 0; i < nodes.size(); i++)
@@ -112,7 +113,7 @@ simulateUpgrade(std::vector<LedgerUpgradeNode> const& nodes,
             Upgrades::UpgradeParameters upgrades;
             setUpgrade(upgrades.mBaseFee, du.baseFee);
             setUpgrade(upgrades.mBaseReserve, du.baseReserve);
-            setUpgrade(upgrades.mMaxTxSize, du.maxTxSetSize);
+            setUpgrade(upgrades.mMaxTxSetSize, du.maxTxSetSize);
             setUpgrade(upgrades.mProtocolVersion, du.ledgerVersion);
             upgrades.mUpgradeTime = upgradeTime;
             app->getHerder().setUpgrades(upgrades);
@@ -170,7 +171,7 @@ simulateUpgrade(std::vector<LedgerUpgradeNode> const& nodes,
 
     if (checkUpgradeStatus)
     {
-        // at least one node should show message thats it has some
+        // at least one node should show message that it has some
         // pending upgrades
         REQUIRE(std::any_of(
             std::begin(keys), std::end(keys), [&](SecretKey const& key) {
@@ -207,61 +208,33 @@ makeTxCountUpgrade(int txCount)
 }
 
 LedgerUpgrade
-makeBaseReserveUpgrade(int baseReserve)
+makeFlagsUpgrade(int flags)
 {
-    auto result = LedgerUpgrade{LEDGER_UPGRADE_BASE_RESERVE};
-    result.newBaseReserve() = baseReserve;
+    auto result = LedgerUpgrade{LEDGER_UPGRADE_FLAGS};
+    result.newFlags() = flags;
     return result;
 }
-
-UpgradeType
-toUpgradeType(LedgerUpgrade const& upgrade)
-{
-    auto v = xdr::xdr_to_opaque(upgrade);
-    auto result = UpgradeType{v.begin(), v.end()};
-    return result;
-}
-
-LedgerHeader
-executeUpgrades(Application& app, xdr::xvector<UpgradeType, 6> const& upgrades)
-{
-    auto& lm = app.getLedgerManager();
-    auto const& lcl = lm.getLastClosedLedgerHeader();
-    auto txSet = std::make_shared<TxSetFrame>(lcl.hash);
-
-    DigitalBitsValue sv{txSet->getContentsHash(), 2, upgrades, DIGITALBITS_VALUE_BASIC};
-    LedgerCloseData ledgerData(lcl.header.ledgerSeq + 1, txSet, sv);
-
-    app.getLedgerManager().closeLedger(ledgerData);
-    return lm.getLastClosedLedgerHeader().header;
-};
-
-LedgerHeader
-executeUpgrade(Application& app, LedgerUpgrade const& lupgrade)
-{
-    return executeUpgrades(app, {toUpgradeType(lupgrade)});
-};
 
 void
 testListUpgrades(VirtualClock::system_time_point preferredUpgradeDatetime,
                  bool shouldListAny)
 {
     auto cfg = getTestConfig();
-    cfg.LEDGER_PROTOCOL_VERSION = 10;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = 10;
     cfg.TESTING_UPGRADE_DESIRED_FEE = 100;
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 50;
     cfg.TESTING_UPGRADE_RESERVE = 100000000;
     cfg.TESTING_UPGRADE_DATETIME = preferredUpgradeDatetime;
 
     auto header = LedgerHeader{};
-    header.ledgerVersion = cfg.LEDGER_PROTOCOL_VERSION;
+    header.ledgerVersion = cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION;
     header.baseFee = cfg.TESTING_UPGRADE_DESIRED_FEE;
     header.baseReserve = cfg.TESTING_UPGRADE_RESERVE;
     header.maxTxSetSize = cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE;
     header.scpValue.closeTime = VirtualClock::to_time_t(genesis(0, 0));
 
     auto protocolVersionUpgrade =
-        makeProtocolVersionUpgrade(cfg.LEDGER_PROTOCOL_VERSION);
+        makeProtocolVersionUpgrade(cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION);
     auto baseFeeUpgrade = makeBaseFeeUpgrade(cfg.TESTING_UPGRADE_DESIRED_FEE);
     auto txCountUpgrade =
         makeTxCountUpgrade(cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE);
@@ -330,7 +303,7 @@ testValidateUpgrades(VirtualClock::system_time_point preferredUpgradeDatetime,
                      bool canBeValid)
 {
     auto cfg = getTestConfig();
-    cfg.LEDGER_PROTOCOL_VERSION = 10;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = 10;
     cfg.TESTING_UPGRADE_DESIRED_FEE = 100;
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 50;
     cfg.TESTING_UPGRADE_RESERVE = 100000000;
@@ -528,7 +501,6 @@ TEST_CASE("Ledger Manager applies upgrades properly", "[upgrades]")
     auto cfg = getTestConfig(0);
     cfg.USE_CONFIG_FOR_GENESIS = false;
     auto app = createTestApplication(clock, cfg);
-    app->start();
 
     auto const& lcl = app->getLedgerManager().getLastClosedLedgerHeader();
     auto const& lastHash = lcl.hash;
@@ -588,7 +560,7 @@ TEST_CASE("upgrade to version 10", "[upgrades]")
     cfg.USE_CONFIG_FOR_GENESIS = false;
 
     auto app = createTestApplication(clock, cfg);
-    app->start();
+
     executeUpgrade(*app, makeProtocolVersionUpgrade(9));
 
     auto& lm = app->getLedgerManager();
@@ -1428,7 +1400,7 @@ TEST_CASE("upgrade to version 11", "[upgrades]")
     cfg.USE_CONFIG_FOR_GENESIS = false;
 
     auto app = createTestApplication(clock, cfg);
-    app->start();
+
     executeUpgrade(*app, makeProtocolVersionUpgrade(10));
 
     auto& lm = app->getLedgerManager();
@@ -1462,11 +1434,20 @@ TEST_CASE("upgrade to version 11", "[upgrades]")
             CLOG_INFO(Ledger, "Ledger {} upgrading to v{}", ledgerSeq,
                       newProto);
         }
-        DigitalBitsValue sv(txSet->getContentsHash(), closeTime, upgrades,
-                        DIGITALBITS_VALUE_BASIC);
+
+        DigitalBitsValue sv = app->getHerder().makeDigitalBitsValue(
+            txSet->getContentsHash(), closeTime, upgrades,
+            app->getConfig().NODE_SEED);
         lm.closeLedger(LedgerCloseData(ledgerSeq, txSet, sv));
         auto& bm = app->getBucketManager();
+        auto& bl = bm.getBucketList();
+        while (!bl.futuresAllResolved())
+        {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            bl.resolveAnyReadyFutures();
+        }
         auto mc = bm.readMergeCounters();
+
         CLOG_INFO(Bucket,
                   "Ledger {} did {} old-protocol merges, {} new-protocol "
                   "merges, {} new INITENTRYs, {} old INITENTRYs",
@@ -1542,7 +1523,7 @@ TEST_CASE("upgrade to version 12", "[upgrades]")
     cfg.USE_CONFIG_FOR_GENESIS = false;
 
     auto app = createTestApplication(clock, cfg);
-    app->start();
+
     executeUpgrade(*app, makeProtocolVersionUpgrade(11));
 
     auto& lm = app->getLedgerManager();
@@ -1577,13 +1558,15 @@ TEST_CASE("upgrade to version 12", "[upgrades]")
             CLOG_INFO(Ledger, "Ledger {} upgrading to v{}", ledgerSeq,
                       newProto);
         }
-        DigitalBitsValue sv(txSet->getContentsHash(), closeTime, upgrades,
-                        DIGITALBITS_VALUE_BASIC);
+        DigitalBitsValue sv = app->getHerder().makeDigitalBitsValue(
+            txSet->getContentsHash(), closeTime, upgrades,
+            app->getConfig().NODE_SEED);
         lm.closeLedger(LedgerCloseData(ledgerSeq, txSet, sv));
         auto& bm = app->getBucketManager();
         auto& bl = bm.getBucketList();
         while (!bl.futuresAllResolved())
         {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
             bl.resolveAnyReadyFutures();
         }
         auto mc = bm.readMergeCounters();
@@ -1646,7 +1629,7 @@ TEST_CASE("upgrade to version 13", "[upgrades]")
     cfg.USE_CONFIG_FOR_GENESIS = false;
 
     auto app = createTestApplication(clock, cfg);
-    app->start();
+
     executeUpgrade(*app, makeProtocolVersionUpgrade(12));
 
     auto& lm = app->getLedgerManager();
@@ -1675,9 +1658,10 @@ TEST_CASE("upgrade to version 13", "[upgrades]")
                                               ledgerSeq, emptyTxSet);
 
         auto upgrade = toUpgradeType(makeProtocolVersionUpgrade(13));
-        DigitalBitsValue sv{emptyTxSet->getContentsHash(), 2,
-                        xdr::xvector<UpgradeType, 6>({upgrade}),
-                        DIGITALBITS_VALUE_BASIC};
+        DigitalBitsValue sv =
+            herder.makeDigitalBitsValue(emptyTxSet->getContentsHash(), 2,
+                                    xdr::xvector<UpgradeType, 6>({upgrade}),
+                                    app->getConfig().NODE_SEED);
         herder.getHerderSCPDriver().valueExternalized(ledgerSeq,
                                                       xdr::xdr_to_opaque(sv));
     }
@@ -1694,12 +1678,11 @@ TEST_CASE("upgrade base reserve", "[upgrades]")
     VirtualClock clock;
     auto cfg = getTestConfig(0);
 
-    // Do our setup in version 1 so that for_versions_* below do not
-    // try to downgrade us from >1 to 1.
+    // Do our setup in version 0 so that for_versions_* below do not
+    // try to downgrade us from >0 to 0.
     cfg.USE_CONFIG_FOR_GENESIS = false;
 
     auto app = createTestApplication(clock, cfg);
-    app->start();
 
     auto& lm = app->getLedgerManager();
     auto txFee = lm.getLastTxFee();
@@ -2132,7 +2115,6 @@ TEST_CASE("upgrade base reserve", "[upgrades]")
             };
 
             for_versions_from(14, *app, [&] {
-
                 // Swap the seeds to test that the ordering of accounts doesn't
                 // matter when upgrading
                 SECTION("account A is sponsored")
@@ -2245,32 +2227,60 @@ TEST_CASE("simulate upgrades", "[herder][upgrades][acceptance]")
 TEST_CASE("upgrade invalid during ledger close", "[upgrades]")
 {
     VirtualClock clock;
-    auto app = createTestApplication(clock, getTestConfig());
-    app->start();
+    // Do our setup in version 0 so that for_versions_* below do not
+    // try to downgrade us from >0 to 0.
+    auto cfg = getTestConfig();
+    cfg.USE_CONFIG_FOR_GENESIS = false;
 
-    // Version upgrade to unsupported
-    REQUIRE_THROWS(
-        executeUpgrade(*app, makeProtocolVersionUpgrade(
-                                 Config::CURRENT_LEDGER_PROTOCOL_VERSION + 1)));
+    auto app = createTestApplication(clock, cfg);
 
-    // Version downgrade
-    REQUIRE_THROWS(
+    SECTION("invalid version changes")
+    {
+        // Version upgrade to unsupported
+        REQUIRE_THROWS(executeUpgrade(
+            *app, makeProtocolVersionUpgrade(
+                      Config::CURRENT_LEDGER_PROTOCOL_VERSION + 1)));
+
         executeUpgrade(*app, makeProtocolVersionUpgrade(
-                                 Config::CURRENT_LEDGER_PROTOCOL_VERSION - 1)));
+                                 Config::CURRENT_LEDGER_PROTOCOL_VERSION));
+
+        // Version downgrade
+        REQUIRE_THROWS(executeUpgrade(
+            *app, makeProtocolVersionUpgrade(
+                      Config::CURRENT_LEDGER_PROTOCOL_VERSION - 1)));
+    }
 
     // Base Fee / Base Reserve to 0
     REQUIRE_THROWS(executeUpgrade(*app, makeBaseFeeUpgrade(0)));
     REQUIRE_THROWS(executeUpgrade(*app, makeBaseReserveUpgrade(0)));
+
+    for_versions_to(17, *app, [&] {
+        REQUIRE_THROWS(executeUpgrade(*app, makeFlagsUpgrade(1)));
+    });
+
+    for_versions_from(18, *app, [&] {
+        auto allFlags = DISABLE_LIQUIDITY_POOL_TRADING_FLAG |
+                        DISABLE_LIQUIDITY_POOL_DEPOSIT_FLAG |
+                        DISABLE_LIQUIDITY_POOL_WITHDRAWAL_FLAG;
+        REQUIRE(allFlags == MASK_LEDGER_HEADER_FLAGS);
+
+        REQUIRE_THROWS(executeUpgrade(
+            *app, makeFlagsUpgrade(MASK_LEDGER_HEADER_FLAGS + 1)));
+
+        // success
+        executeUpgrade(*app, makeFlagsUpgrade(MASK_LEDGER_HEADER_FLAGS));
+    });
 }
 
 TEST_CASE("validate upgrade expiration logic", "[upgrades]")
 {
     auto cfg = getTestConfig();
-    cfg.LEDGER_PROTOCOL_VERSION = 10;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = 10;
     cfg.TESTING_UPGRADE_DESIRED_FEE = 100;
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 50;
     cfg.TESTING_UPGRADE_RESERVE = 100000000;
     cfg.TESTING_UPGRADE_DATETIME = genesis(0, 0);
+    cfg.TESTING_UPGRADE_FLAGS = 1;
 
     auto header = LedgerHeader{};
 
@@ -2279,6 +2289,7 @@ TEST_CASE("validate upgrade expiration logic", "[upgrades]")
     header.baseFee = cfg.TESTING_UPGRADE_DESIRED_FEE - 1;
     header.baseReserve = cfg.TESTING_UPGRADE_RESERVE - 1;
     header.maxTxSetSize = cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE - 1;
+    setLedgerHeaderFlag(header, cfg.TESTING_UPGRADE_FLAGS - 1);
 
     SECTION("remove expired upgrades")
     {
@@ -2293,8 +2304,9 @@ TEST_CASE("validate upgrade expiration logic", "[upgrades]")
         REQUIRE(updated);
         REQUIRE(!upgrades.mProtocolVersion);
         REQUIRE(!upgrades.mBaseFee);
-        REQUIRE(!upgrades.mMaxTxSize);
+        REQUIRE(!upgrades.mMaxTxSetSize);
         REQUIRE(!upgrades.mBaseReserve);
+        REQUIRE(!upgrades.mFlags);
     }
 
     SECTION("upgrades not yet expired")
@@ -2311,7 +2323,144 @@ TEST_CASE("validate upgrade expiration logic", "[upgrades]")
         REQUIRE(!updated);
         REQUIRE(upgrades.mProtocolVersion);
         REQUIRE(upgrades.mBaseFee);
-        REQUIRE(upgrades.mMaxTxSize);
+        REQUIRE(upgrades.mMaxTxSetSize);
         REQUIRE(upgrades.mBaseReserve);
+        REQUIRE(upgrades.mFlags);
     }
+}
+
+TEST_CASE("upgrade from cpp14 serialized data", "[upgrades]")
+{
+    std::string in = R"({
+    "time": 1618016242,
+    "version": {
+        "has": true,
+        "val": 17
+    },
+    "fee": {
+        "has": false
+    },
+    "maxtxsize": {
+        "has": true,
+        "val": 10000
+    },
+    "reserve": {
+        "has": false
+    },
+    "flags": {
+        "has": false
+    }
+})";
+    Upgrades::UpgradeParameters up;
+    up.fromJson(in);
+    REQUIRE(VirtualClock::to_time_t(up.mUpgradeTime) == 1618016242);
+    REQUIRE(up.mProtocolVersion.has_value());
+    REQUIRE(up.mProtocolVersion.value() == 17);
+    REQUIRE(!up.mBaseFee.has_value());
+    REQUIRE(up.mMaxTxSetSize.has_value());
+    REQUIRE(up.mMaxTxSetSize.value() == 10000);
+    REQUIRE(!up.mBaseReserve.has_value());
+}
+
+TEST_CASE("upgrade flags", "[upgrades][liquiditypool]")
+{
+    VirtualClock clock;
+    // Do our setup in version 0 so that for_versions_* below do not
+    // try to downgrade us from >0 to 0.
+    auto cfg = getTestConfig();
+    cfg.USE_CONFIG_FOR_GENESIS = false;
+
+    auto app = createTestApplication(clock, cfg);
+
+    auto root = TestAccount::createRoot(*app);
+    auto native = makeNativeAsset();
+    auto cur1 = makeAsset(root, "CUR1");
+
+    auto shareNative1 =
+        makeChangeTrustAssetPoolShare(native, cur1, LIQUIDITY_POOL_FEE_V18);
+    auto poolNative1 = xdrSha256(shareNative1.liquidityPool());
+
+    auto executeUpgrade = [&](uint32_t newFlags) {
+        REQUIRE(
+            ::executeUpgrade(*app, makeFlagsUpgrade(newFlags)).ext.v1().flags ==
+            newFlags);
+    };
+
+    for_versions_from(18, *app, [&] {
+        // deposit
+        REQUIRE_THROWS_AS(root.liquidityPoolDeposit(poolNative1, 1, 1,
+                                                    Price{1, 1}, Price{1, 1}),
+                          ex_LIQUIDITY_POOL_DEPOSIT_NO_TRUST);
+
+        executeUpgrade(DISABLE_LIQUIDITY_POOL_DEPOSIT_FLAG);
+
+        REQUIRE_THROWS_AS(root.liquidityPoolDeposit(poolNative1, 1, 1,
+                                                    Price{1, 1}, Price{1, 1}),
+                          ex_opNOT_SUPPORTED);
+
+        // withdraw
+        REQUIRE_THROWS_AS(root.liquidityPoolWithdraw(poolNative1, 1, 0, 0),
+                          ex_LIQUIDITY_POOL_WITHDRAW_NO_TRUST);
+
+        executeUpgrade(DISABLE_LIQUIDITY_POOL_WITHDRAWAL_FLAG);
+
+        REQUIRE_THROWS_AS(root.liquidityPoolWithdraw(poolNative1, 1, 0, 0),
+                          ex_opNOT_SUPPORTED);
+
+        // clear flag
+        executeUpgrade(0);
+
+        // try both after clearing flags
+        REQUIRE_THROWS_AS(root.liquidityPoolDeposit(poolNative1, 1, 1,
+                                                    Price{1, 1}, Price{1, 1}),
+                          ex_LIQUIDITY_POOL_DEPOSIT_NO_TRUST);
+
+        REQUIRE_THROWS_AS(root.liquidityPoolWithdraw(poolNative1, 1, 0, 0),
+                          ex_LIQUIDITY_POOL_WITHDRAW_NO_TRUST);
+
+        // set both flags
+        executeUpgrade(DISABLE_LIQUIDITY_POOL_DEPOSIT_FLAG |
+                       DISABLE_LIQUIDITY_POOL_WITHDRAWAL_FLAG);
+
+        REQUIRE_THROWS_AS(root.liquidityPoolDeposit(poolNative1, 1, 1,
+                                                    Price{1, 1}, Price{1, 1}),
+                          ex_opNOT_SUPPORTED);
+
+        REQUIRE_THROWS_AS(root.liquidityPoolWithdraw(poolNative1, 1, 0, 0),
+                          ex_opNOT_SUPPORTED);
+
+        // clear flags
+        executeUpgrade(0);
+
+        root.changeTrust(shareNative1, INT64_MAX);
+
+        // deposit so we can test the disable trading flag
+        root.liquidityPoolDeposit(poolNative1, 1000, 1000, Price{1, 1},
+                                  Price{1, 1});
+
+        auto a1 =
+            root.create("a1", app->getLedgerManager().getLastMinBalance(0));
+
+        auto balance = a1.getBalance();
+        root.pay(a1, cur1, 2, native, 1, {});
+        REQUIRE(balance + 1 == a1.getBalance());
+
+        executeUpgrade(DISABLE_LIQUIDITY_POOL_TRADING_FLAG);
+
+        REQUIRE_THROWS_AS(root.pay(a1, cur1, 2, native, 1, {}),
+                          ex_PATH_PAYMENT_STRICT_RECEIVE_TOO_FEW_OFFERS);
+
+        executeUpgrade(0);
+
+        balance = a1.getBalance();
+        root.pay(a1, cur1, 2, native, 1, {});
+        REQUIRE(balance + 1 == a1.getBalance());
+
+        // block it again after trade (and add on a second flag)
+        executeUpgrade(DISABLE_LIQUIDITY_POOL_TRADING_FLAG |
+                       DISABLE_LIQUIDITY_POOL_WITHDRAWAL_FLAG);
+
+        REQUIRE_THROWS_AS(root.pay(a1, cur1, 2, native, 1, {}),
+                          ex_PATH_PAYMENT_STRICT_RECEIVE_TOO_FEW_OFFERS);
+    });
 }

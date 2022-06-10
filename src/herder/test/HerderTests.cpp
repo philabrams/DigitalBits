@@ -29,11 +29,14 @@
 #include "transactions/TransactionBridge.h"
 #include "transactions/TransactionFrame.h"
 #include "transactions/TransactionUtils.h"
+#include "util/Math.h"
+#include "util/ProtocolVersion.h"
 
 #include "xdr/DigitalBits-ledger.h"
 #include "xdrpp/marshal.h"
 #include <algorithm>
 #include <fmt/format.h>
+#include <optional>
 
 using namespace digitalbits;
 using namespace digitalbits::txbridge;
@@ -53,11 +56,8 @@ TEST_CASE("standalone", "[herder][acceptance]")
     cfg.QUORUM_SET.validators.push_back(v0NodeID);
 
     for_all_versions(cfg, [&](Config const& cfg1) {
-
         VirtualClock clock;
         Application::pointer app = createTestApplication(clock, cfg1);
-
-        app->start();
 
         // set up world
         auto root = TestAccount::createRoot(*app);
@@ -152,7 +152,9 @@ TEST_CASE("standalone", "[herder][acceptance]")
                 bool hasC = false;
                 {
                     LedgerTxn ltx(app->getLedgerTxnRoot());
-                    hasC = ltx.loadHeader().current().ledgerVersion >= 10;
+                    hasC = protocolVersionStartsFrom(
+                        ltx.loadHeader().current().ledgerVersion,
+                        ProtocolVersion::V_10);
                 }
                 if (hasC)
                 {
@@ -165,7 +167,7 @@ TEST_CASE("standalone", "[herder][acceptance]")
                 waitForExternalize();
 
                 // all of a1's transactions went through
-                // b1's last transaction failed due to account non existant
+                // b1's last transaction failed due to account non existent
                 int64 expectedBalance =
                     startingBalance - 3 * paymentAmount - 3 * txfee;
                 REQUIRE(a1.getBalance() == expectedBalance);
@@ -254,11 +256,9 @@ testTxSet(uint32 protocolVersion)
 {
     Config cfg(getTestConfig());
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 14;
-    cfg.LEDGER_PROTOCOL_VERSION = protocolVersion;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = protocolVersion;
     VirtualClock clock;
     Application::pointer app = createTestApplication(clock, cfg);
-
-    app->start();
 
     // set up world
     auto root = TestAccount::createRoot(*app);
@@ -313,6 +313,7 @@ testTxSet(uint32 protocolVersion)
 
             txSet->trimInvalid(*app, 0, 0);
             REQUIRE(txSet->checkValid(*app, 0, 0));
+            REQUIRE(txSet->mTransactions.size() == (2 * nbTransactions));
         }
         SECTION("out of order")
         {
@@ -321,6 +322,7 @@ testTxSet(uint32 protocolVersion)
 
             txSet->trimInvalid(*app, 0, 0);
             REQUIRE(txSet->checkValid(*app, 0, 0));
+            REQUIRE(txSet->mTransactions.size() == (2 * nbTransactions));
         }
     }
     SECTION("invalid tx")
@@ -334,6 +336,7 @@ testTxSet(uint32 protocolVersion)
 
             txSet->trimInvalid(*app, 0, 0);
             REQUIRE(txSet->checkValid(*app, 0, 0));
+            REQUIRE(txSet->mTransactions.size() == (2 * nbTransactions));
         }
         SECTION("sequence gap")
         {
@@ -347,6 +350,7 @@ testTxSet(uint32 protocolVersion)
 
                 txSet->trimInvalid(*app, 0, 0);
                 REQUIRE(txSet->checkValid(*app, 0, 0));
+                REQUIRE(txSet->mTransactions.size() == (2 * nbTransactions));
             }
             SECTION("gap begin")
             {
@@ -363,26 +367,20 @@ testTxSet(uint32 protocolVersion)
             SECTION("gap middle")
             {
                 int remIdx = 2; // 3rd transaction
-                digitalbits::SequenceNumber tx_to_erase = 
-                    txSet->mTransactions[nbTransactions + remIdx]->getSeqNum();
-                txSet->sortForApply();
-                // remove the selected transaction belonging to the 2nd account
-                txSet->mTransactions.erase(std::remove_if(
-                        txSet->mTransactions.begin(),
-                        txSet->mTransactions.end(),
-                        [&](auto& tx) {return (tx->getSeqNum() == tx_to_erase
-                            && tx->getSourceID() == accounts[1].getPublicKey());}),
-                    txSet->mTransactions.end());                
+                // erase it from first account
+                txSet->mTransactions.erase(txSet->mTransactions.begin() +
+                                           remIdx);
                 txSet->sortForHash();
                 REQUIRE(!txSet->checkValid(*app, 0, 0));
 
                 auto removed = txSet->trimInvalid(*app, 0, 0);
                 REQUIRE(txSet->checkValid(*app, 0, 0));
-                // one account has all its transactions
-                const int exp_removed_size = 2,
-                          exp_retained_size = nbTransactions + 2;
-                REQUIRE(removed.size() == exp_removed_size);
-                REQUIRE(txSet->mTransactions.size() == exp_retained_size);
+                // one account has all its transactions,
+                // the other, we removed transactions after remIdx
+                auto expectedRemoved = nbTransactions - remIdx - 1;
+                REQUIRE(removed.size() == expectedRemoved);
+                REQUIRE(txSet->mTransactions.size() ==
+                        (nbTransactions * 2 - expectedRemoved - 1));
             }
         }
         SECTION("insufficient balance")
@@ -401,10 +399,7 @@ testTxSet(uint32 protocolVersion)
         {
             auto tx = std::static_pointer_cast<TransactionFrame>(
                 txSet->mTransactions[0]);
-            auto& tb = tx->getEnvelope().type() == ENVELOPE_TYPE_TX_V0
-                           ? tx->getEnvelope().v0().tx.timeBounds.activate()
-                           : tx->getEnvelope().v1().tx.timeBounds.activate();
-            tb.maxTime = UINT64_MAX;
+            setMaxTime(tx, UINT64_MAX);
             tx->clearCached();
             txSet->sortForHash();
             REQUIRE(!txSet->checkValid(*app, 0, 0));
@@ -444,10 +439,9 @@ testTxSetWithFeeBumps(uint32 protocolVersion)
 {
     Config cfg(getTestConfig());
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 14;
-    cfg.LEDGER_PROTOCOL_VERSION = protocolVersion;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = protocolVersion;
     VirtualClock clock;
     Application::pointer app = createTestApplication(clock, cfg);
-    app->start();
 
     auto const minBalance0 = app->getLedgerManager().getLastMinBalance(0);
     auto const minBalance2 = app->getLedgerManager().getLastMinBalance(2);
@@ -670,17 +664,15 @@ TEST_CASE("txset", "[herder][txset]")
 TEST_CASE("txset base fee", "[herder][txset]")
 {
     Config cfg(getTestConfig());
-    uint32_t const maxTxSize = 112;
-    cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = maxTxSize;
+    uint32_t const maxTxSetSize = 112;
+    cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = maxTxSetSize;
 
     auto testBaseFee = [&](uint32_t protocolVersion, uint32 nbTransactions,
                            uint32 extraAccounts, size_t lim, int64_t expLowFee,
                            int64_t expHighFee) {
-        cfg.LEDGER_PROTOCOL_VERSION = protocolVersion;
+        cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = protocolVersion;
         VirtualClock clock;
         Application::pointer app = createTestApplication(clock, cfg);
-
-        app->start();
 
         LedgerHeader lhCopy;
         {
@@ -735,7 +727,7 @@ TEST_CASE("txset base fee", "[herder][txset]")
         auto balancesBefore = getBalances();
 
         // apply this
-        closeLedgerOn(*app, 3, 1, 1, 2020, txSet->mTransactions);
+        closeLedgerOn(*app, 2, 1, 1, 2020, txSet->mTransactions);
 
         auto balancesAfter = getBalances();
         int64_t lowFee = INT64_MAX, highFee = 0;
@@ -777,7 +769,8 @@ TEST_CASE("txset base fee", "[herder][txset]")
             {
                 // low = base tx
                 // high = last extra tx
-                testBaseFee(10, baseCount, v10ExtraTx, maxTxSize, 1000, 20104);
+                testBaseFee(10, baseCount, v10ExtraTx, maxTxSetSize, 1000,
+                            20104);
             }
             SECTION("protocol current")
             {
@@ -786,13 +779,14 @@ TEST_CASE("txset base fee", "[herder][txset]")
                 SECTION("maxed out surged")
                 {
                     testBaseFee(Config::CURRENT_LEDGER_PROTOCOL_VERSION,
-                                baseCount, v11ExtraTx, maxTxSize, 1000, 2000);
+                                baseCount, v11ExtraTx, maxTxSetSize, 1000,
+                                2000);
                 }
                 SECTION("smallest surged")
                 {
                     testBaseFee(Config::CURRENT_LEDGER_PROTOCOL_VERSION,
                                 baseCount + 1, v11ExtraTx - 50,
-                                maxTxSize - 100 + 1, 1000, 2000);
+                                maxTxSetSize - 100 + 1, 1000, 2000);
                 }
             }
         }
@@ -802,14 +796,14 @@ TEST_CASE("txset base fee", "[herder][txset]")
             {
                 // low = 20000+1
                 // high = 20000+112
-                testBaseFee(10, 0, v10NewCount, maxTxSize, 20001, 20112);
+                testBaseFee(10, 0, v10NewCount, maxTxSetSize, 20001, 20112);
             }
             SECTION("protocol current")
             {
                 // low = 20000+1 -> baseFee = 20001/2+ = 10001
                 // high = 10001*2
                 testBaseFee(Config::CURRENT_LEDGER_PROTOCOL_VERSION, 0,
-                            v11NewCount, maxTxSize, 20001, 20002);
+                            v11NewCount, maxTxSetSize, 20001, 20002);
             }
         }
     }
@@ -829,7 +823,7 @@ TEST_CASE("txset base fee", "[herder][txset]")
                 // high = 2*minFee
                 // highest number of ops not surged is max-100
                 testBaseFee(Config::CURRENT_LEDGER_PROTOCOL_VERSION, baseCount,
-                            v11ExtraTx - 50, maxTxSize - 100, 100, 200);
+                            v11ExtraTx - 50, maxTxSetSize - 100, 100, 200);
             }
         }
         SECTION("newOnly")
@@ -846,7 +840,7 @@ TEST_CASE("txset base fee", "[herder][txset]")
                 // high = 2*minFee
                 // highest number of ops not surged is max-100
                 testBaseFee(Config::CURRENT_LEDGER_PROTOCOL_VERSION, 0,
-                            v11NewCount - 50, maxTxSize - 100, 200, 200);
+                            v11NewCount - 50, maxTxSetSize - 100, 200, 200);
             }
         }
     }
@@ -862,12 +856,10 @@ surgeTest(uint32 protocolVersion, uint32_t nbTxs, uint32_t maxTxSetSize,
 {
     Config cfg(getTestConfig());
     cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = maxTxSetSize;
-    cfg.LEDGER_PROTOCOL_VERSION = protocolVersion;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = protocolVersion;
 
     VirtualClock clock;
     Application::pointer app = createTestApplication(clock, cfg);
-
-    app->start();
 
     LedgerHeader lhCopy;
     {
@@ -1051,8 +1043,6 @@ TEST_CASE("surge pricing", "[herder][txset]")
         VirtualClock clock;
         Application::pointer app = createTestApplication(clock, cfg);
 
-        app->start();
-
         auto root = TestAccount::createRoot(*app);
 
         auto destAccount = root.create("destAccount", 500000000);
@@ -1083,24 +1073,21 @@ TEST_CASE("surge pricing", "[herder][txset]")
 }
 
 static void
-testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
-              bool const expectTxSetCloseTimeAffinity)
+testSCPDriver(uint32 protocolVersion, uint32_t maxTxSetSize, size_t expectedOps)
 {
     using SVUpgrades = decltype(DigitalBitsValue::upgrades);
 
     Config cfg(getTestConfig(0, Config::TESTDB_DEFAULT));
 
     cfg.MANUAL_CLOSE = false;
-    cfg.LEDGER_PROTOCOL_VERSION = protocolVersion;
-    cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = maxTxSize;
+    cfg.TESTING_UPGRADE_LEDGER_PROTOCOL_VERSION = protocolVersion;
+    cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = maxTxSetSize;
 
     VirtualClock clock;
     auto s = SecretKey::pseudoRandomForTesting();
     cfg.QUORUM_SET.validators.emplace_back(s.getPublicKey());
 
     Application::pointer app = createTestApplication(clock, cfg);
-
-    app->start();
 
     auto const& lcl = app->getLedgerManager().getLastClosedLedgerHeader();
 
@@ -1109,22 +1096,17 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
 
     using TxPair = std::pair<Value, TxSetFramePtr>;
     auto makeTxUpgradePair = [&](HerderImpl& herder, TxSetFramePtr txSet,
-                                 uint64_t closeTime, SVUpgrades const& upgrades,
-                                 bool sig) {
+                                 uint64_t closeTime,
+                                 SVUpgrades const& upgrades) {
         txSet->sortForHash();
-        auto sv = DigitalBitsValue(txSet->getContentsHash(), closeTime, upgrades,
-                               DIGITALBITS_VALUE_BASIC);
-        if (sig)
-        {
-            herder.signDigitalBitsValue(root.getSecretKey(), sv);
-        }
+        DigitalBitsValue sv = herder.makeDigitalBitsValue(
+            txSet->getContentsHash(), closeTime, upgrades, root.getSecretKey());
         auto v = xdr::xdr_to_opaque(sv);
         return TxPair{v, txSet};
     };
     auto makeTxPair = [&](HerderImpl& herder, TxSetFramePtr txSet,
-                          uint64_t closeTime, bool sig) {
-        return makeTxUpgradePair(herder, txSet, closeTime, emptyUpgradeSteps,
-                                 sig);
+                          uint64_t closeTime) {
+        return makeTxUpgradePair(herder, txSet, closeTime, emptyUpgradeSteps);
     };
     auto makeEnvelope = [&s](HerderImpl& herder, TxPair const& p, Hash qSetHash,
                              uint64_t slotIndex, bool nomination) {
@@ -1174,7 +1156,7 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
 
         auto addToCandidates = [&](TxPair const& p) {
             auto envelope = makeEnvelope(
-                herder, p, {}, herder.getCurrentLedgerSeq() + 1, true);
+                herder, p, {}, herder.trackingConsensusLedgerIndex() + 1, true);
             REQUIRE(herder.recvSCPEnvelope(envelope) ==
                     Herder::ENVELOPE_STATUS_FETCHING);
             REQUIRE(herder.recvTxSet(p.second->getContentsHash(), *p.second));
@@ -1188,7 +1170,7 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
             int const nbOps;
             uint32 const feeMulti;
             TimePoint const closeTime;
-            optional<uint32> const baseFeeIncrement;
+            std::optional<uint32> const baseFeeIncrement;
         };
 
         std::vector<Hash> txSetHashes;
@@ -1225,13 +1207,12 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
                 Value upgrade(xdr::xdr_to_opaque(ledgerUpgrade));
                 SVUpgrades upgrades;
                 upgrades.emplace_back(upgrade.begin(), upgrade.end());
-                addToCandidates(makeTxUpgradePair(herder, txSet, spec.closeTime,
-                                                  upgrades, true));
+                addToCandidates(
+                    makeTxUpgradePair(herder, txSet, spec.closeTime, upgrades));
             }
             else
             {
-                addToCandidates(
-                    makeTxPair(herder, txSet, spec.closeTime, true));
+                addToCandidates(makeTxPair(herder, txSet, spec.closeTime));
             }
 
             // Compute the expected transaction set, close time, and upgrade
@@ -1241,10 +1222,7 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
                 std::max_element(txSetSizes.begin(), txSetSizes.end()));
             REQUIRE(txSetSizes.size() == closeTimes.size());
             auto const expectedHash = txSetHashes[bestTxSetIndex];
-            auto const expectedCloseTime =
-                expectTxSetCloseTimeAffinity
-                    ? closeTimes[bestTxSetIndex]
-                    : *std::max_element(closeTimes.begin(), closeTimes.end());
+            auto const expectedCloseTime = closeTimes[bestTxSetIndex];
             SVUpgrades expectedUpgradeVector;
             if (!baseFees.empty())
             {
@@ -1267,8 +1245,7 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
 
             // Compare the returned DigitalBitsValue's contents with the
             // expected ones that we computed above.
-            REQUIRE(sv.ext.v() ==
-                    herder.getHerderSCPDriver().compositeValueType());
+            REQUIRE(sv.ext.v() == DIGITALBITS_VALUE_SIGNED);
             REQUIRE(sv.txSetHash == expectedHash);
             REQUIRE(sv.closeTime == expectedCloseTime);
             REQUIRE(sv.upgrades == expectedUpgradeVector);
@@ -1278,10 +1255,10 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
         // combineCandidates() and the one we compute at each step.
 
         std::vector<CandidateSpec> const specs{
-            {0, 1, 100, 10, make_optional<uint32>()},
-            {10, 1, 100, 5, make_optional<uint32>(1)},
-            {5, 3, 100, 20, make_optional<uint32>(2)},
-            {7, 2, 5, 30, make_optional<uint32>(3)}};
+            {0, 1, 100, 10, std::nullopt},
+            {10, 1, 100, 5, std::make_optional<uint32>(1)},
+            {5, 3, 100, 20, std::make_optional<uint32>(2)},
+            {7, 2, 5, 30, std::make_optional<uint32>(3)}};
 
         std::for_each(specs.begin(), specs.end(), addCandidateThenTest);
 
@@ -1290,14 +1267,15 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
             std::max_element(txSetSizes.begin(), txSetSizes.end()));
         REQUIRE(txSetOpSizes[bestTxSetIndex] == expectedOps);
 
-        TxSetFramePtr txSetL = makeTransactions(lcl.hash, maxTxSize, 1, 101);
-        addToCandidates(makeTxPair(herder, txSetL, 20, true));
-        TxSetFramePtr txSetL2 = makeTransactions(lcl.hash, maxTxSize, 1, 1000);
-        addToCandidates(makeTxPair(herder, txSetL2, 20, true));
+        TxSetFramePtr txSetL = makeTransactions(lcl.hash, maxTxSetSize, 1, 101);
+        addToCandidates(makeTxPair(herder, txSetL, 20));
+        TxSetFramePtr txSetL2 =
+            makeTransactions(lcl.hash, maxTxSetSize, 1, 1000);
+        addToCandidates(makeTxPair(herder, txSetL2, 20));
         auto v = herder.getHerderSCPDriver().combineCandidates(1, candidates);
         DigitalBitsValue sv;
         xdr::xdr_from_opaque(v->getValue(), sv);
-        REQUIRE(sv.ext.v() == herder.getHerderSCPDriver().compositeValueType());
+        REQUIRE(sv.ext.v() == DIGITALBITS_VALUE_SIGNED);
         REQUIRE(sv.txSetHash == txSetL2->getContentsHash());
     }
 
@@ -1305,19 +1283,13 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
     {
         auto& herder = static_cast<HerderImpl&>(app->getHerder());
         auto& scp = herder.getHerderSCPDriver();
-        auto seq = herder.getCurrentLedgerSeq() + 1;
+        auto seq = herder.trackingConsensusLedgerIndex() + 1;
         auto ct = app->timeNow() + 1;
-        auto const signedBallots =
-            (scp.compositeValueType() == DIGITALBITS_VALUE_SIGNED);
-
-        REQUIRE(signedBallots == expectTxSetCloseTimeAffinity);
-        REQUIRE(scp.curProtocolPreservesTxSetCloseTimeAffinity() ==
-                expectTxSetCloseTimeAffinity);
 
         TxSetFramePtr txSet0 = makeTransactions(lcl.hash, 0, 1, 100);
         {
             // make sure that txSet0 is loaded
-            auto p = makeTxPair(herder, txSet0, ct, true);
+            auto p = makeTxPair(herder, txSet0, ct);
             auto envelope = makeEnvelope(herder, p, {}, seq, true);
             REQUIRE(herder.recvSCPEnvelope(envelope) ==
                     Herder::ENVELOPE_STATUS_FETCHING);
@@ -1326,49 +1298,62 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
 
         SECTION("valid")
         {
-            auto nomV = makeTxPair(herder, txSet0, ct, true);
+            auto nomV = makeTxPair(herder, txSet0, ct);
             REQUIRE(scp.validateValue(seq, nomV.first, true) ==
                     SCPDriver::kFullyValidatedValue);
 
-            auto balV = makeTxPair(herder, txSet0, ct, signedBallots);
+            auto balV = makeTxPair(herder, txSet0, ct);
             REQUIRE(scp.validateValue(seq, balV.first, false) ==
                     SCPDriver::kFullyValidatedValue);
         }
         SECTION("invalid")
         {
-            auto nomV = makeTxPair(herder, txSet0, ct, false);
-            REQUIRE(scp.validateValue(seq, nomV.first, true) ==
-                    SCPDriver::kInvalidValue);
-
-            auto balV = makeTxPair(herder, txSet0, ct, !signedBallots);
-            REQUIRE(scp.validateValue(seq, balV.first, false) ==
-                    SCPDriver::kInvalidValue);
-
-            auto p = makeTxPair(herder, txSet0, ct, true);
-            DigitalBitsValue sv;
-            xdr::xdr_from_opaque(p.first, sv);
-
-            auto checkInvalid = [&](DigitalBitsValue const& sv) {
+            auto checkInvalid = [&](DigitalBitsValue const& sv, bool nomination) {
                 auto v = xdr::xdr_to_opaque(sv);
-                REQUIRE(scp.validateValue(seq, v, true) ==
+                REQUIRE(scp.validateValue(seq, v, nomination) ==
                         SCPDriver::kInvalidValue);
             };
 
-            // mutate in a few ways
-            SECTION("missing signature")
+            auto testInvalidValue = [&](bool isNomination) {
+                SECTION("basic value")
+                {
+                    auto basicVal =
+                        DigitalBitsValue(txSet0->getContentsHash(), ct,
+                                     emptyUpgradeSteps, DIGITALBITS_VALUE_BASIC);
+                    checkInvalid(basicVal, isNomination);
+                }
+                SECTION("signed value")
+                {
+                    auto p = makeTxPair(herder, txSet0, ct);
+                    DigitalBitsValue sv;
+                    xdr::xdr_from_opaque(p.first, sv);
+
+                    // mutate in a few ways
+                    SECTION("missing signature")
+                    {
+                        sv.ext.lcValueSignature().signature.clear();
+                        checkInvalid(sv, isNomination);
+                    }
+                    SECTION("wrong signature")
+                    {
+                        sv.ext.lcValueSignature().signature[0] ^= 1;
+                        checkInvalid(sv, isNomination);
+                    }
+                    SECTION("wrong signature 2")
+                    {
+                        sv.ext.lcValueSignature().nodeID.ed25519()[0] ^= 1;
+                        checkInvalid(sv, isNomination);
+                    }
+                }
+            };
+
+            SECTION("nomination")
             {
-                sv.ext.lcValueSignature().signature.clear();
-                checkInvalid(sv);
+                testInvalidValue(/* isNomination */ true);
             }
-            SECTION("wrong signature")
+            SECTION("ballot")
             {
-                sv.ext.lcValueSignature().signature[0] ^= 1;
-                checkInvalid(sv);
-            }
-            SECTION("wrong signature 2")
-            {
-                sv.ext.lcValueSignature().nodeID.ed25519()[0] ^= 1;
-                checkInvalid(sv);
+                testInvalidValue(/* isNomination */ false);
             }
         }
     }
@@ -1380,53 +1365,47 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
 
         auto const lclCloseTime = lcl.header.scpValue.closeTime;
 
-        auto testTxBounds = [&](TimePoint const minTime,
-                                TimePoint const maxTime,
-                                TimePoint const nextCloseTime,
-                                bool const expectValid) {
-            REQUIRE(nextCloseTime > lcl.header.scpValue.closeTime);
-            // Build a transaction set containing one transaction (which could
-            // be any transaction that is valid in all ways aside from its time
-            // bounds) with the given minTime and maxTime.
-            auto tx = makeMultiPayment(root, root, 10, 1000, 0, 100);
-            auto& tb = tx->getEnvelope().type() == ENVELOPE_TYPE_TX_V0
-                           ? tx->getEnvelope().v0().tx.timeBounds.activate()
-                           : tx->getEnvelope().v1().tx.timeBounds.activate();
-            tb.minTime = minTime;
-            tb.maxTime = maxTime;
-            auto& sig = tx->getEnvelope().type() == ENVELOPE_TYPE_TX_V0
-                            ? tx->getEnvelope().v0().signatures
-                            : tx->getEnvelope().v1().signatures;
-            sig.clear();
-            tx->addSignature(root.getSecretKey());
-            auto txSet = std::make_shared<TxSetFrame>(
-                app->getLedgerManager().getLastClosedLedgerHeader().hash);
-            txSet->add(tx);
+        auto testTxBounds =
+            [&](TimePoint const minTime, TimePoint const maxTime,
+                TimePoint const nextCloseTime, bool const expectValid) {
+                REQUIRE(nextCloseTime > lcl.header.scpValue.closeTime);
+                // Build a transaction set containing one transaction (which
+                // could be any transaction that is valid in all ways aside from
+                // its time bounds) with the given minTime and maxTime.
+                auto tx = makeMultiPayment(root, root, 10, 1000, 0, 100);
+                setMinTime(tx, minTime);
+                setMaxTime(tx, maxTime);
+                auto& sig = tx->getEnvelope().type() == ENVELOPE_TYPE_TX_V0
+                                ? tx->getEnvelope().v0().signatures
+                                : tx->getEnvelope().v1().signatures;
+                sig.clear();
+                tx->addSignature(root.getSecretKey());
+                auto txSet = std::make_shared<TxSetFrame>(
+                    app->getLedgerManager().getLastClosedLedgerHeader().hash);
+                txSet->add(tx);
 
-            // Build a DigitalBitsValue containing the transaction set we just built
-            // and the given next closeTime.
-            auto val = makeTxPair(herder, txSet, nextCloseTime, true);
-            auto const seq = herder.getCurrentLedgerSeq() + 1;
-            auto envelope = makeEnvelope(herder, val, {}, seq, true);
-            REQUIRE(herder.recvSCPEnvelope(envelope) ==
-                    Herder::ENVELOPE_STATUS_FETCHING);
-            REQUIRE(herder.recvTxSet(txSet->getContentsHash(), *txSet));
+                // Build a DigitalBitsValue containing the transaction set we just
+                // built and the given next closeTime.
+                auto val = makeTxPair(herder, txSet, nextCloseTime);
+                auto const seq = herder.trackingConsensusLedgerIndex() + 1;
+                auto envelope = makeEnvelope(herder, val, {}, seq, true);
+                REQUIRE(herder.recvSCPEnvelope(envelope) ==
+                        Herder::ENVELOPE_STATUS_FETCHING);
+                REQUIRE(herder.recvTxSet(txSet->getContentsHash(), *txSet));
 
-            // Validate the DigitalBitsValue.
-            REQUIRE(scp.validateValue(seq, val.first, true) ==
-                    (expectValid ? SCPDriver::kFullyValidatedValue
-                                 : SCPDriver::kInvalidValue));
+                // Validate the DigitalBitsValue.
+                REQUIRE(scp.validateValue(seq, val.first, true) ==
+                        (expectValid ? SCPDriver::kFullyValidatedValue
+                                     : SCPDriver::kInvalidValue));
 
-            // Confirm that trimInvalid() as used by
-            // HerderImpl::triggerNextLedger() trims the transaction if and only
-            // if we expect it to be invalid.
-            auto closeTimeOffset = expectTxSetCloseTimeAffinity
-                                       ? (nextCloseTime - lclCloseTime)
-                                       : 0;
-            auto removed =
-                txSet->trimInvalid(*app, closeTimeOffset, closeTimeOffset);
-            REQUIRE(removed.size() == (expectValid ? 0 : 1));
-        };
+                // Confirm that trimInvalid() as used by
+                // HerderImpl::triggerNextLedger() trims the transaction if and
+                // only if we expect it to be invalid.
+                auto closeTimeOffset = nextCloseTime - lclCloseTime;
+                auto removed =
+                    txSet->trimInvalid(*app, closeTimeOffset, closeTimeOffset);
+                REQUIRE(removed.size() == (expectValid ? 0 : 1));
+            };
 
         auto t1 = lclCloseTime + 1, t2 = lclCloseTime + 2;
 
@@ -1435,14 +1414,14 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
             testTxBounds(0, t1, t1, true);
         }
 
-        SECTION("expired (invalid maxTime) with txSet/closeTime affinity")
+        SECTION("invalid time bounds: expired (invalid maxTime)")
         {
-            testTxBounds(0, t1, t2, !expectTxSetCloseTimeAffinity);
+            testTxBounds(0, t1, t2, false);
         }
 
-        SECTION("premature (invalid minTime) without txSet/closeTime affinity")
+        SECTION("valid time bounds: premature minTime")
         {
-            testTxBounds(t1, 0, t1, expectTxSetCloseTimeAffinity);
+            testTxBounds(t1, 0, t1, true);
         }
     }
 
@@ -1487,10 +1466,10 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
         auto& herder = static_cast<HerderImpl&>(app->getHerder());
         auto transactions1 = makeTransactions(lcl.hash, 5, 1, 100);
         auto transactions2 = makeTransactions(lcl.hash, 4, 1, 100);
-        auto p1 = makeTxPair(herder, transactions1, 10, true);
-        auto p2 = makeTxPair(herder, transactions1, 10, true);
+        auto p1 = makeTxPair(herder, transactions1, 10);
+        auto p2 = makeTxPair(herder, transactions1, 10);
         // use current + 1 to allow for any value (old values get filtered more)
-        auto lseq = herder.getCurrentLedgerSeq() + 1;
+        auto lseq = herder.trackingConsensusLedgerIndex() + 1;
         auto saneEnvelopeQ1T1 =
             makeEnvelope(herder, p1, saneQSet1Hash, lseq, true);
         auto saneEnvelopeQ1T2 =
@@ -1615,13 +1594,9 @@ testSCPDriver(uint32 protocolVersion, uint32_t maxTxSize, size_t expectedOps,
 
 TEST_CASE("SCP Driver", "[herder][acceptance]")
 {
-    SECTION("protocol 13")
-    {
-        testSCPDriver(13, 1000, 15, false);
-    }
     SECTION("protocol current")
     {
-        testSCPDriver(Config::CURRENT_LEDGER_PROTOCOL_VERSION, 1000, 15, true);
+        testSCPDriver(Config::CURRENT_LEDGER_PROTOCOL_VERSION, 1000, 15);
     }
 }
 
@@ -1640,7 +1615,7 @@ TEST_CASE("SCP State", "[herder][acceptance]")
     // but for "Force SCP" test there are 3 nodes and only 2 have previous
     // ledger state. However it is possible that nomination protocol will
     // choose last node as leader for first few rounds. New ledger will only
-    // be externalized when first or second node are choosen as round leaders.
+    // be externalized when first or second node are chosen as round leaders.
     // It some cases it can take more time than expected. Probability of that
     // is pretty low, but high enough that it forced us to rerun tests from
     // time to time to pass that one case.
@@ -1713,6 +1688,9 @@ TEST_CASE("SCP State", "[herder][acceptance]")
         }
         sim->addNode(nodeKeys[2], qSetAll, &nodeCfgs[2]);
         sim->getNode(nodeIDs[2])->start();
+        // 2 always has FORCE_SCP=true, so it starts in sync
+        REQUIRE(sim->getNode(nodeIDs[2])->getState() ==
+                Application::State::APP_SYNCED_STATE);
 
         // crank a bit (nothing should happen, node 2 is waiting for SCP
         // messages)
@@ -1720,7 +1698,7 @@ TEST_CASE("SCP State", "[herder][acceptance]")
 
         REQUIRE(sim->getNode(nodeIDs[2])
                     ->getLedgerManager()
-                    .getLastClosedLedgerNum() == 2);
+                    .getLastClosedLedgerNum() == 1);
 
         // start up node 0 and 1 again
         // nodes 0 and 1 have lost their SCP state as they got restarted
@@ -1732,6 +1710,20 @@ TEST_CASE("SCP State", "[herder][acceptance]")
         sim->addNode(nodeKeys[1], qSetAll, &nodeCfgs[1], false);
         sim->getNode(nodeIDs[0])->start();
         sim->getNode(nodeIDs[1])->start();
+        if (forceSCP)
+        {
+            REQUIRE(sim->getNode(nodeIDs[0])->getState() ==
+                    Application::State::APP_SYNCED_STATE);
+            REQUIRE(sim->getNode(nodeIDs[1])->getState() ==
+                    Application::State::APP_SYNCED_STATE);
+        }
+        else
+        {
+            REQUIRE(sim->getNode(nodeIDs[0])->getState() ==
+                    Application::State::APP_CONNECTED_STANDBY_STATE);
+            REQUIRE(sim->getNode(nodeIDs[1])->getState() ==
+                    Application::State::APP_CONNECTED_STANDBY_STATE);
+        }
 
         sim->addConnection(nodeIDs[0], nodeIDs[2]);
         sim->addConnection(nodeIDs[1], nodeIDs[2]);
@@ -1745,11 +1737,14 @@ TEST_CASE("SCP State", "[herder][acceptance]")
         // next ledger
         sim->crankUntil(
             [&]() { return sim->haveAllExternalized(expectedLedger + 1, 5); },
-            2 * numLedgers * Herder::EXP_LEDGER_TIMESPAN_SECONDS, true);
+            2 * numLedgers * Herder::EXP_LEDGER_TIMESPAN_SECONDS, false);
 
         // nodes are at least on ledger 7 (some may be on 8)
         for (int i = 0; i <= 2; i++)
         {
+            // All nodes are in sync
+            REQUIRE(sim->getNode(nodeIDs[i])->getState() ==
+                    Application::State::APP_SYNCED_STATE);
             auto const& actual = sim->getNode(nodeIDs[i])
                                      ->getLedgerManager()
                                      .getLastClosedLedgerHeader()
@@ -1775,6 +1770,13 @@ TEST_CASE("SCP State", "[herder][acceptance]")
             },
             std::chrono::seconds(1), false);
 
+        REQUIRE(sim->getNode(nodeIDs[0])->getState() ==
+                Application::State::APP_CONNECTED_STANDBY_STATE);
+        REQUIRE(sim->getNode(nodeIDs[1])->getState() ==
+                Application::State::APP_CONNECTED_STANDBY_STATE);
+        REQUIRE(sim->getNode(nodeIDs[2])->getState() ==
+                Application::State::APP_SYNCED_STATE);
+
         for (int i = 0; i <= 2; i++)
         {
             auto const& actual = sim->getNode(nodeIDs[i])
@@ -1783,14 +1785,59 @@ TEST_CASE("SCP State", "[herder][acceptance]")
                                      .header;
             REQUIRE(actual == lcl.header);
         }
+
+        // Crank some more and let 2 go out of sync
+        sim->crankUntil(
+            [&]() {
+                return sim->getNode(nodeIDs[2])->getHerder().getState() ==
+                       Herder::State::HERDER_SYNCING_STATE;
+            },
+            10 * Herder::EXP_LEDGER_TIMESPAN_SECONDS, false);
+        // Verify that the app is not synced anymore
+        REQUIRE(sim->getNode(nodeIDs[2])->getState() ==
+                Application::State::APP_ACQUIRING_CONSENSUS_STATE);
     }
 }
 
-TEST_CASE("values externalized out of order", "[herder]")
+static void
+checkSynced(Application& app)
+{
+    REQUIRE(app.getLedgerManager().isSynced());
+    REQUIRE(!app.getCatchupManager().maybeGetNextBufferedLedgerToApply());
+}
+
+void
+checkInvariants(Application& app, HerderImpl& herder)
+{
+    auto lcl = app.getLedgerManager().getLastClosedLedgerNum();
+    // Either tracking or last tracking must be set
+    // Tracking is ahead of or equal to LCL
+    REQUIRE(herder.trackingConsensusLedgerIndex() >= lcl);
+}
+
+static void
+checkHerder(Application& app, HerderImpl& herder, Herder::State expectedState,
+            uint32_t ledger)
+{
+    checkInvariants(app, herder);
+    REQUIRE(herder.getState() == expectedState);
+    REQUIRE(herder.trackingConsensusLedgerIndex() == ledger);
+}
+
+// The main purpose of this test is to ensure the externalize path works
+// correctly. This entails properly updating tracking in Herder, forwarding
+// externalize information to LM, and Herder appropriately reacting to ledger
+// close.
+
+// The nice thing about this test is that because we fully control the messages
+// received by a node, we fully control the state of Herder and LM (and whether
+// each component is in sync or out of sync)
+TEST_CASE("herder externalizes values", "[herder]")
 {
     auto networkID = sha256(getTestConfig().NETWORK_PASSPHRASE);
-    auto simulation =
-        std::make_shared<Simulation>(Simulation::OVER_LOOPBACK, networkID);
+    auto simulation = std::make_shared<Simulation>(
+        Simulation::OVER_LOOPBACK, networkID,
+        [](int i) { return getTestConfig(i, Config::TESTDB_ON_DISK_SQLITE); });
 
     auto validatorAKey = SecretKey::fromSeed(sha256("validator-A"));
     auto validatorBKey = SecretKey::fromSeed(sha256("validator-B"));
@@ -1811,16 +1858,31 @@ TEST_CASE("values externalized out of order", "[herder]")
     simulation->addPendingConnection(validatorAKey.getPublicKey(),
                                      validatorBKey.getPublicKey());
 
+    auto getC = [&]() {
+        return simulation->getNode(validatorCKey.getPublicKey());
+    };
+
+    // Before application is started, Herder is booting
+    REQUIRE(getC()->getHerder().getState() ==
+            Herder::State::HERDER_BOOTING_STATE);
+
     simulation->startAllNodes();
+
+    // After SCP is restored, Herder is tracking
+    REQUIRE(getC()->getHerder().getState() ==
+            Herder::State::HERDER_TRACKING_NETWORK_STATE);
+
     auto A = simulation->getNode(validatorAKey.getPublicKey());
     auto B = simulation->getNode(validatorBKey.getPublicKey());
-    auto C = simulation->getNode(validatorCKey.getPublicKey());
 
     auto currentALedger = [&]() {
         return A->getLedgerManager().getLastClosedLedgerNum();
     };
+    auto currentBLedger = [&]() {
+        return B->getLedgerManager().getLastClosedLedgerNum();
+    };
     auto currentCLedger = [&]() {
-        return C->getLedgerManager().getLastClosedLedgerNum();
+        return getC()->getLedgerManager().getLastClosedLedgerNum();
     };
 
     auto waitForLedgers = [&](int nLedgers) {
@@ -1833,15 +1895,18 @@ TEST_CASE("values externalized out of order", "[herder]")
         return std::min(currentALedger(), currentCLedger());
     };
 
-    auto waitForA = [&](int nLedgers) {
+    auto waitForAB = [&](int nLedgers, bool waitForB) {
         auto destinationLedger = currentALedger() + nLedgers;
         simulation->crankUntil(
-            [&]() { return currentALedger() >= destinationLedger; },
+            [&]() {
+                return currentALedger() >= destinationLedger &&
+                       (!waitForB || currentBLedger() >= destinationLedger);
+            },
             2 * nLedgers * Herder::EXP_LEDGER_TIMESPAN_SECONDS, false);
         return currentALedger();
     };
 
-    uint32_t currentLedger = 2;
+    uint32_t currentLedger = 1;
     REQUIRE(currentALedger() == currentLedger);
     REQUIRE(currentCLedger() == currentLedger);
 
@@ -1859,20 +1924,16 @@ TEST_CASE("values externalized out of order", "[herder]")
 
     HerderImpl& herderA = *static_cast<HerderImpl*>(&A->getHerder());
     HerderImpl& herderB = *static_cast<HerderImpl*>(&B->getHerder());
-    HerderImpl& herderC = *static_cast<HerderImpl*>(&C->getHerder());
+    HerderImpl& herderC = *static_cast<HerderImpl*>(&getC()->getHerder());
+    auto const& lmC = getC()->getLedgerManager();
 
-    auto const& lmC = C->getLedgerManager();
-    auto const& cmC = C->getCatchupManager();
-
-    // Now construct a few future externalize messages
-    // Make sure out of order messages are still within the validity range
+    // Advance A and B a bit further, and collect externalize messages
     std::map<uint32_t, std::pair<SCPEnvelope, TxSetFramePtr>>
         validatorSCPMessagesA;
     std::map<uint32_t, std::pair<SCPEnvelope, TxSetFramePtr>>
         validatorSCPMessagesB;
 
-    // Advance A and B a bit further, and collect externalize messages
-    auto destinationLedger = waitForA(4);
+    auto destinationLedger = waitForAB(4, true);
     for (auto start = currentLedger + 1; start <= destinationLedger; start++)
     {
         for (auto const& env : herderA.getSCP().getLatestMessagesSend(start))
@@ -1905,39 +1966,48 @@ TEST_CASE("values externalized out of order", "[herder]")
     }
 
     REQUIRE(validatorSCPMessagesA.size() == validatorSCPMessagesB.size());
-    REQUIRE(herderC.getCurrentLedgerSeq() == currentCLedger());
+    checkHerder(*(getC()), herderC,
+                Herder::State::HERDER_TRACKING_NETWORK_STATE, currentCLedger());
     REQUIRE(currentCLedger() == currentLedger);
+
+    auto receiveLedger = [&](uint32_t ledger, Herder& herder) {
+        auto newMsgB = validatorSCPMessagesB.at(ledger);
+        auto newMsgA = validatorSCPMessagesA.at(ledger);
+
+        REQUIRE(
+            herder.recvSCPEnvelope(newMsgA.first, qset, *(newMsgA.second)) ==
+            Herder::ENVELOPE_STATUS_READY);
+        REQUIRE(
+            herder.recvSCPEnvelope(newMsgB.first, qset, *(newMsgB.second)) ==
+            Herder::ENVELOPE_STATUS_READY);
+    };
 
     auto testOutOfOrder = [&](bool partial) {
         auto first = currentLedger + 1;
         auto second = first + 1;
         auto third = second + 1;
-
-        // Externalize future ledger
-        // This should trigger CatchupManager to start buffering ledgers
-        auto futureSlotA = validatorSCPMessagesA[third + 1];
-        auto futureSlotB = validatorSCPMessagesB[third + 1];
-
-        REQUIRE(herderC.recvSCPEnvelope(futureSlotA.first, qset,
-                                        *(futureSlotA.second)) ==
-                Herder::ENVELOPE_STATUS_READY);
-        REQUIRE(herderC.recvSCPEnvelope(futureSlotB.first, qset,
-                                        *(futureSlotB.second)) ==
-                Herder::ENVELOPE_STATUS_READY);
+        auto fourth = third + 1;
 
         // Drop A-B connection, so that the network can't make progress
+        REQUIRE(currentALedger() == fourth);
         simulation->dropConnection(validatorAKey.getPublicKey(),
                                    validatorBKey.getPublicKey());
 
-        // Wait until C goes out of sync
+        // Externalize future ledger
+        // This should trigger CatchupManager to start buffering ledgers
+        receiveLedger(fourth, herderC);
+
+        // Wait until C goes out of sync, and processes future slots
         simulation->crankUntil([&]() { return !lmC.isSynced(); },
                                2 * Herder::CONSENSUS_STUCK_TIMEOUT_SECONDS,
                                false);
 
         // Ensure LM is out of sync, and Herder tracks ledger seq from latest
         // envelope
-        REQUIRE(herderC.getCurrentLedgerSeq() ==
-                futureSlotA.first.statement.slotIndex);
+        REQUIRE(!lmC.isSynced());
+        checkHerder(*(getC()), herderC,
+                    Herder::State::HERDER_TRACKING_NETWORK_STATE, fourth);
+        REQUIRE(herderC.getTriggerTimer().seq() == 0);
 
         // Next, externalize a contiguous ledger
         // This will cause LM to apply it, and catchup manager will try to apply
@@ -1954,37 +2024,35 @@ TEST_CASE("values externalized out of order", "[herder]")
 
         for (size_t i = 0; i < ledgers.size(); i++)
         {
-            auto slotA = validatorSCPMessagesA[ledgers[i]];
-            auto slotB = validatorSCPMessagesB[ledgers[i]];
+            receiveLedger(ledgers[i], herderC);
 
-            REQUIRE(
-                herderC.recvSCPEnvelope(slotA.first, qset, *(slotA.second)) ==
-                Herder::ENVELOPE_STATUS_READY);
-            REQUIRE(
-                herderC.recvSCPEnvelope(slotB.first, qset, *(slotB.second)) ==
-                Herder::ENVELOPE_STATUS_READY);
-
-            REQUIRE(herderC.getCurrentLedgerSeq() ==
-                    futureSlotA.first.statement.slotIndex);
-
-            REQUIRE(!cmC.isCatchupInitialized());
+            // Tracking did not change
+            checkHerder(*(getC()), herderC,
+                        Herder::State::HERDER_TRACKING_NETWORK_STATE, fourth);
+            REQUIRE(!getC()->getCatchupManager().isCatchupInitialized());
 
             // At the last ledger, LM is back in sync
             if (i == ledgers.size() - 1)
             {
-                REQUIRE(lmC.isSynced());
-                REQUIRE(!cmC.hasBufferedLedger());
+                checkSynced(*(getC()));
+                // All the buffered ledgers are applied by now, so it's safe to
+                // trigger the next ledger
+                REQUIRE(herderC.getTriggerTimer().seq() > 0);
+                REQUIRE(herderC.mTriggerNextLedgerSeq == fourth + 1);
             }
             else
             {
                 REQUIRE(!lmC.isSynced());
+                // As we're not in sync yet, ensure next ledger is not triggered
+                REQUIRE(herderC.getTriggerTimer().seq() == 0);
+                REQUIRE(herderC.mTriggerNextLedgerSeq == currentLedger + 1);
             }
         }
 
         // As we're back in sync now, ensure Herder and LM are consistent with
         // each other
         auto lcl = lmC.getLastClosedLedgerNum();
-        REQUIRE(lcl == herderC.getCurrentLedgerSeq());
+        REQUIRE(lcl == herderC.trackingConsensusLedgerIndex());
 
         // Ensure that C sent out a nomination message for the next consensus
         // round
@@ -2003,54 +2071,168 @@ TEST_CASE("values externalized out of order", "[herder]")
             2 * Herder::EXP_LEDGER_TIMESPAN_SECONDS, false);
     };
 
-    SECTION("in order")
+    SECTION("newer ledgers externalize in order")
     {
-        for (auto const& msgPair : validatorSCPMessagesA)
+        auto checkReceivedLedgers = [&]() {
+            for (auto const& msgPair : validatorSCPMessagesA)
+            {
+                receiveLedger(msgPair.first, herderC);
+
+                // Tracking is updated correctly
+                checkHerder(*(getC()), herderC,
+                            Herder::State::HERDER_TRACKING_NETWORK_STATE,
+                            msgPair.first);
+                // LM is synced
+                checkSynced(*(getC()));
+
+                // Since we're externalizing ledgers in order, make sure ledger
+                // trigger is scheduled
+                REQUIRE(herderC.getTriggerTimer().seq() > 0);
+                REQUIRE(herderC.mTriggerNextLedgerSeq == msgPair.first + 1);
+            }
+        };
+
+        SECTION("tracking")
         {
-            auto msgA = msgPair.second;
-            auto msgB = validatorSCPMessagesB[msgPair.first];
-
-            REQUIRE(herderC.recvSCPEnvelope(msgA.first, qset, *(msgA.second)) ==
-                    Herder::ENVELOPE_STATUS_READY);
-            REQUIRE(herderC.recvSCPEnvelope(msgB.first, qset, *(msgB.second)) ==
-                    Herder::ENVELOPE_STATUS_READY);
-
-            // Tracking is updated correctly
-            REQUIRE(herderC.getCurrentLedgerSeq() ==
-                    msgA.first.statement.slotIndex);
-            // nothing out of ordinary in LM
-            REQUIRE(lmC.isSynced());
-            // Catchup is not running, no ledgers are buffered
-            REQUIRE(!cmC.hasBufferedLedger());
+            checkHerder(*(getC()), herderC,
+                        Herder::State::HERDER_TRACKING_NETWORK_STATE,
+                        currentLedger);
+            checkReceivedLedgers();
+        }
+        SECTION("not tracking")
+        {
+            simulation->crankUntil(
+                [&]() {
+                    return herderC.getState() ==
+                           Herder::State::HERDER_SYNCING_STATE;
+                },
+                2 * Herder::CONSENSUS_STUCK_TIMEOUT_SECONDS, false);
+            checkHerder(*(getC()), herderC, Herder::State::HERDER_SYNCING_STATE,
+                        currentLedger);
+            checkReceivedLedgers();
         }
     }
-    SECTION("completely out of order")
+    SECTION("newer ledgers externalize out of order")
     {
-        testOutOfOrder(/* partial */ false);
+        SECTION("completely")
+        {
+            testOutOfOrder(/* partial */ false);
+        }
+        SECTION("partial")
+        {
+            testOutOfOrder(/* partial */ true);
+        }
     }
-    SECTION("partially out of order")
-    {
-        testOutOfOrder(/* partial */ true);
-    }
-    SECTION("C goes back in sync and unsticks the network")
-    {
-        testOutOfOrder(/* partial */ false);
 
-        // Now that C is back in sync and triggered next ledger
-        // (and B is disconnected), C and A should be able to make progress
+    SECTION("older ledgers externalize and no-op")
+    {
+        // Reconnect nodes to crank the simulation just enough to purge older
+        // slots
+        auto configC = getC()->getConfig();
+        simulation->addConnection(validatorAKey.getPublicKey(),
+                                  validatorBKey.getPublicKey());
         simulation->addConnection(validatorAKey.getPublicKey(),
                                   validatorCKey.getPublicKey());
+        auto currentlyTracking =
+            waitForLedgers(configC.MAX_SLOTS_TO_REMEMBER + 1);
 
-        auto lcl = currentALedger();
-        auto nextLedger = lcl + fewLedgers;
+        // Restart C with higher MAX_SLOTS_TO_REMEMBER config, to allow
+        // processing of older slots
+        simulation->removeNode(validatorCKey.getPublicKey());
+        configC.MAX_SLOTS_TO_REMEMBER += 5;
+        auto newC = simulation->addNode(validatorCKey, qset, &configC, false);
+        newC->start();
+        HerderImpl& newHerderC = *static_cast<HerderImpl*>(&newC->getHerder());
 
-        // Make sure A and C are starting from the same ledger
-        REQUIRE(lcl == currentCLedger());
+        checkHerder(*newC, newHerderC,
+                    Herder::State::HERDER_TRACKING_NETWORK_STATE,
+                    currentlyTracking);
 
-        waitForA(fewLedgers);
-        REQUIRE(currentALedger() >= nextLedger);
-        REQUIRE(currentCLedger() >= nextLedger);
-        REQUIRE(currentALedger() == currentCLedger());
+        SECTION("tracking")
+        {
+            receiveLedger(destinationLedger, newHerderC);
+
+            checkHerder(*newC, newHerderC,
+                        Herder::State::HERDER_TRACKING_NETWORK_STATE,
+                        currentlyTracking);
+            checkSynced(*newC);
+            // Externalizing an old ledger should not trigger next ledger
+            REQUIRE(newHerderC.mTriggerNextLedgerSeq == currentlyTracking + 1);
+        }
+        SECTION("not tracking")
+        {
+            // Wait until C goes out of sync
+            simulation->crankUntil(
+                [&]() {
+                    return newHerderC.getState() ==
+                           Herder::State::HERDER_SYNCING_STATE;
+                },
+                2 * Herder::CONSENSUS_STUCK_TIMEOUT_SECONDS, false);
+            checkHerder(*newC, newHerderC, Herder::State::HERDER_SYNCING_STATE,
+                        currentlyTracking);
+
+            receiveLedger(destinationLedger, newHerderC);
+
+            // Tracking has not changed, still the most recent ledger
+            checkHerder(*newC, newHerderC, Herder::State::HERDER_SYNCING_STATE,
+                        currentlyTracking);
+            checkSynced(*newC);
+
+            // Externalizing an old ledger should not trigger next ledger
+            REQUIRE(newHerderC.mTriggerNextLedgerSeq == currentlyTracking + 1);
+        }
+    }
+    SECTION("trigger next ledger")
+    {
+        // Sync C with the rest of the network
+        testOutOfOrder(/* partial */ false);
+
+        // Reconnect C to the rest of the network
+        simulation->addConnection(validatorAKey.getPublicKey(),
+                                  validatorCKey.getPublicKey());
+        SECTION("C goes back in sync and unsticks the network")
+        {
+            // Now that C is back in sync and triggered next ledger
+            // (and B is disconnected), C and A should be able to make progress
+
+            auto lcl = currentALedger();
+            auto nextLedger = lcl + fewLedgers;
+
+            // Make sure A and C are starting from the same ledger
+            REQUIRE(lcl == currentCLedger());
+
+            waitForAB(fewLedgers, false);
+            REQUIRE(currentALedger() == nextLedger);
+            // C is at most a ledger behind
+            REQUIRE(currentCLedger() >= nextLedger - 1);
+        }
+        SECTION("restarting C should not trigger twice")
+        {
+            auto configC = getC()->getConfig();
+
+            simulation->removeNode(validatorCKey.getPublicKey());
+
+            auto newC =
+                simulation->addNode(validatorCKey, qset, &configC, false);
+
+            // Restarting C should trigger due to FORCE_SCP
+            newC->start();
+            HerderImpl& newHerderC =
+                *static_cast<HerderImpl*>(&newC->getHerder());
+
+            auto expiryTime = newHerderC.getTriggerTimer().expiry_time();
+            REQUIRE(newHerderC.getTriggerTimer().seq() > 0);
+
+            simulation->crankForAtLeast(std::chrono::seconds(1), false);
+
+            // C receives enough messages to externalize LCL again
+            receiveLedger(newC->getLedgerManager().getLastClosedLedgerNum(),
+                          newHerderC);
+
+            // Trigger timer did not change
+            REQUIRE(expiryTime == newHerderC.getTriggerTimer().expiry_time());
+            REQUIRE(newHerderC.getTriggerTimer().seq() > 0);
+        }
     }
 }
 
@@ -2103,7 +2285,7 @@ TEST_CASE("quick restart", "[herder][quickRestart]")
         return currentValidatorLedger();
     };
 
-    uint32_t currentLedger = 2;
+    uint32_t currentLedger = 1;
     REQUIRE(currentValidatorLedger() == currentLedger);
     REQUIRE(currentListenerLedger() == currentLedger);
 
@@ -2308,13 +2490,8 @@ externalize(SecretKey const& sk, LedgerManager& lm, HerderImpl& herder,
     herder.getPendingEnvelopes().putTxSet(txSet->getContentsHash(), ledgerSeq,
                                           txSet);
 
-    DigitalBitsValue sv{txSet->getContentsHash(), 2, xdr::xvector<UpgradeType, 6>{},
-                    DIGITALBITS_VALUE_BASIC};
-    if (herder.getHerderSCPDriver().compositeValueType() ==
-        DIGITALBITS_VALUE_SIGNED)
-    {
-        herder.signDigitalBitsValue(sk, sv);
-    }
+    DigitalBitsValue sv = herder.makeDigitalBitsValue(
+        txSet->getContentsHash(), 2, xdr::xvector<UpgradeType, 6>{}, sk);
     herder.getHerderSCPDriver().valueExternalized(ledgerSeq,
                                                   xdr::xdr_to_opaque(sv));
 }
@@ -2323,10 +2500,9 @@ TEST_CASE("do not flood invalid transactions", "[herder]")
 {
     VirtualClock clock;
     auto cfg = getTestConfig();
+    cfg.FLOOD_TX_PERIOD_MS = 1; // flood as fast as possible
     auto app = createTestApplication(clock, cfg);
-    app->start();
 
-    auto& om = app->getOverlayManager();
     auto& lm = app->getLedgerManager();
     auto& herder = static_cast<HerderImpl&>(app->getHerder());
     auto& tq = herder.getTransactionQueue();
@@ -2336,16 +2512,23 @@ TEST_CASE("do not flood invalid transactions", "[herder]")
 
     auto tx1a = acc.tx({payment(acc, 1)});
     auto tx1r = root.tx({bumpSequence(INT64_MAX)});
+    // this will be invalid after tx1r gets applied
     auto tx2r = root.tx({payment(root, 1)});
 
     herder.recvTransaction(tx1a);
     herder.recvTransaction(tx1r);
     herder.recvTransaction(tx2r);
 
-    auto numBroadcast = om.getOverlayMetrics().mMessagesBroadcast.count();
+    size_t numBroadcast = 0;
+    tq.mTxBroadcastedEvent = [&](TransactionFrameBasePtr&) { ++numBroadcast; };
+
     externalize(cfg.NODE_SEED, lm, herder, {tx1r});
-    REQUIRE(numBroadcast + 1 ==
-            om.getOverlayMetrics().mMessagesBroadcast.count());
+    auto timeout = clock.now() + std::chrono::seconds(5);
+    while (numBroadcast != 1)
+    {
+        clock.crank(true);
+        REQUIRE(clock.now() < timeout);
+    }
 
     auto const& lhhe = lm.getLastClosedLedgerHeader();
     auto txSet = tq.toTxSet(lhhe);
@@ -2355,55 +2538,177 @@ TEST_CASE("do not flood invalid transactions", "[herder]")
     REQUIRE(txSet->checkValid(*app, 0, 0));
 }
 
-TEST_CASE("do not flood too many transactions", "[herder]")
+TEST_CASE("do not flood too many transactions", "[herder][transactionqueue]")
 {
-    VirtualClock clock;
-    auto cfg = getTestConfig();
-    cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 500;
-    auto app = createTestApplication(clock, cfg);
-    app->start();
+    auto test = [](uint32_t numOps) {
+        auto networkID = sha256(getTestConfig().NETWORK_PASSPHRASE);
+        auto simulation = std::make_shared<Simulation>(
+            Simulation::OVER_LOOPBACK, networkID, [&](int i) {
+                auto cfg = getTestConfig(i);
+                cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE = 500;
+                cfg.NODE_IS_VALIDATOR = false;
+                cfg.FORCE_SCP = false;
+                cfg.FLOOD_TX_PERIOD_MS = 100;
+                cfg.FLOOD_OP_RATE_PER_LEDGER = 2.0;
+                return cfg;
+            });
 
-    auto& om = app->getOverlayManager();
-    auto& lm = app->getLedgerManager();
-    auto& herder = static_cast<HerderImpl&>(app->getHerder());
-    auto& tq = herder.getTransactionQueue();
+        auto mainKey = SecretKey::fromSeed(sha256("main"));
+        auto otherKey = SecretKey::fromSeed(sha256("other"));
 
-    auto root = TestAccount::createRoot(*app);
-    auto acc = root.create("A", lm.getLastMinBalance(2));
+        SCPQuorumSet qset;
+        qset.threshold = 1;
+        qset.validators.push_back(mainKey.getPublicKey());
 
-    auto genTx = [&](TestAccount& source, uint32_t numOps) {
-        std::vector<Operation> ops;
-        for (int64_t i = 1; i <= numOps; ++i)
+        simulation->addNode(mainKey, qset);
+        simulation->addNode(otherKey, qset);
+
+        simulation->addPendingConnection(mainKey.getPublicKey(),
+                                         otherKey.getPublicKey());
+        simulation->startAllNodes();
+        simulation->crankForAtLeast(std::chrono::seconds(1), false);
+
+        auto app = simulation->getNode(mainKey.getPublicKey());
+        auto const& cfg = app->getConfig();
+        auto& lm = app->getLedgerManager();
+        auto& herder = static_cast<HerderImpl&>(app->getHerder());
+        auto& tq = herder.getTransactionQueue();
+
+        auto root = TestAccount::createRoot(*app);
+        std::vector<TestAccount> accs;
+
+        // number of accounts to use
+        int const nbAccounts = 40;
+        // number of transactions to generate per fee
+        // groups are
+        int const feeGroupMaxSize = 7;
+        // used to track fee
+        int feeGroupSize = 0;
+        uint32 curFeeOffset = 10000;
+
+        accs.reserve(nbAccounts);
+        for (int i = 0; i < nbAccounts; ++i)
         {
-            ops.emplace_back(payment(source, i));
+            accs.emplace_back(
+                root.create(fmt::format("A{}", i), lm.getLastMinBalance(2)));
         }
-        auto tx = source.tx(ops);
-        REQUIRE(herder.recvTransaction(tx) ==
-                TransactionQueue::AddResult::ADD_STATUS_PENDING);
-        return tx;
-    };
+        std::deque<uint32> fees;
 
-    auto test = [&](uint32_t numOps) {
-        size_t maxOps = cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE;
+        auto genTx = [&](TestAccount& source, uint32_t numOps, bool highFee) {
+            std::vector<Operation> ops;
+            for (int64_t i = 1; i <= numOps; ++i)
+            {
+                ops.emplace_back(payment(source, i));
+            }
+            auto tx = source.tx(ops);
+            auto txFee = static_cast<uint32_t>(tx->getFeeBid());
+            if (highFee)
+            {
+                txFee += 100000;
+                fees.emplace_front(txFee);
+            }
+            else
+            {
+                txFee += curFeeOffset;
+                fees.emplace_back(txFee);
+            }
+            setFee(tx, txFee);
+            getSignatures(tx).clear();
+            tx->addSignature(source.getSecretKey());
+            if (++feeGroupSize == feeGroupMaxSize)
+            {
+                feeGroupSize = 0;
+                curFeeOffset--;
+            }
 
-        auto tx1a = genTx(acc, numOps);
-        auto tx1r = genTx(root, numOps);
+            REQUIRE(herder.recvTransaction(tx) ==
+                    TransactionQueue::AddResult::ADD_STATUS_PENDING);
+            return tx;
+        };
+
+        auto genTxRandAccount = [&](uint32_t numOps) {
+            genTx(rand_element(accs), numOps, false);
+        };
+
+        size_t const maxOps = cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE;
+
+        auto tx1a = genTx(accs[0], numOps, false);
+        auto tx1r = genTx(root, numOps, false);
         size_t numTx = 2;
-        while ((numTx + 2) * numOps <= maxOps)
+        for (; (numTx + 2) * numOps <= maxOps; ++numTx)
         {
-            genTx(acc, numOps);
-            genTx(root, numOps);
-            numTx += 2;
+            genTxRandAccount(numOps);
         }
+
+        std::map<AccountID, SequenceNumber> bcastTracker;
+        TransactionFrameBasePtr lastTx;
+        tq.mTxBroadcastedEvent = [&](TransactionFrameBasePtr& tx) {
+            // ensure that sequence numbers are correct per account
+            auto expected = tx->getSeqNum();
+            std::swap(bcastTracker[tx->getSourceID()], expected);
+            if (expected != 0)
+            {
+                expected++;
+                REQUIRE(expected == tx->getSeqNum());
+            }
+            // check if we have the expected fee
+            REQUIRE(tx->getFeeBid() == fees.front());
+            fees.pop_front();
+        };
 
         REQUIRE(tq.toTxSet({})->mTransactions.size() == numTx);
 
-        auto numBroadcast = om.getOverlayMetrics().mMessagesBroadcast.count();
-        externalize(cfg.NODE_SEED, lm, herder, {tx1a, tx1r});
-        REQUIRE(numBroadcast + (numTx - 2) ==
-                om.getOverlayMetrics().mMessagesBroadcast.count());
+        // remove the first two transactions that won't be
+        // re-broadcasted during externalize
+        fees.pop_front();
+        fees.pop_front();
 
-        REQUIRE(tq.toTxSet({})->mTransactions.size() == numTx - 2);
+        size_t numBroadcast = 0;
+        tq.mTxBroadcastedEvent = [&](TransactionFrameBasePtr&) {
+            ++numBroadcast;
+        };
+
+        externalize(cfg.NODE_SEED, lm, herder, {tx1a, tx1r});
+
+        // no broadcast right away
+        REQUIRE(numBroadcast == 0);
+        // wait for a bit more than a broadcast period
+        // rate per period is
+        // 2*(maxOps=500)*(FLOOD_TX_PERIOD_MS=100)/((ledger time=5)*1000)
+        // 1000*100/5000=20
+        auto constexpr opsRatePerPeriod = 20;
+        auto broadcastPeriod =
+            std::chrono::milliseconds(cfg.FLOOD_TX_PERIOD_MS);
+        auto const delta = std::chrono::milliseconds(1);
+        simulation->crankForAtLeast(broadcastPeriod + delta, false);
+
+        if (numOps <= opsRatePerPeriod)
+        {
+            auto opsBroadcasted = numBroadcast * numOps;
+            // goal reached
+            REQUIRE(opsBroadcasted <= opsRatePerPeriod);
+            // an extra tx would have exceeded the limit
+            REQUIRE(opsBroadcasted + numOps > opsRatePerPeriod);
+        }
+        else
+        {
+            // can only flood up to 1 transaction per cycle
+            REQUIRE(numBroadcast <= 1);
+        }
+        // as we're waiting for a ledger worth of capacity
+        // and we have a multiplier of 2
+        // it should take about half a ledger period to broadcast everything
+
+        // we wait a bit more, and inject an extra high fee transaction
+        // from an account with no pending transactions
+        // this transactions should be the next one to be broadcasted
+        simulation->crankForAtLeast(std::chrono::milliseconds(500), false);
+        genTx(root, numOps, true);
+
+        simulation->crankForAtLeast(std::chrono::milliseconds(2000), false);
+        REQUIRE(numBroadcast == (numTx - 1));
+        REQUIRE(tq.toTxSet({})->mTransactions.size() == numTx - 1);
+        simulation->stopAllNodes();
     };
 
     SECTION("one operation per transaction")
@@ -2430,7 +2735,7 @@ TEST_CASE("slot herder policy", "[herder]")
     Config cfg(getTestConfig());
 
     // start in sync
-    cfg.FORCE_SCP = true;
+    cfg.FORCE_SCP = false;
     cfg.MANUAL_CLOSE = false;
     cfg.NODE_SEED = v0SecretKey;
     cfg.MAX_SLOTS_TO_REMEMBER = 5;
@@ -2457,14 +2762,10 @@ TEST_CASE("slot herder policy", "[herder]")
         auto& ext = envelope.statement.pledges.externalize();
         TxSetFramePtr txSet = std::make_shared<TxSetFrame>(prevHash);
 
-        DigitalBitsValue sv{txSet->getContentsHash(), (TimePoint)slotIndex,
-                        xdr::xvector<UpgradeType, 6>{}, DIGITALBITS_VALUE_BASIC};
-        if (herder.getHerderSCPDriver().compositeValueType() ==
-            DIGITALBITS_VALUE_SIGNED)
-        {
-            // sign values with the same secret key
-            herder.signDigitalBitsValue(v1SecretKey, sv);
-        }
+        // sign values with the same secret key
+        DigitalBitsValue sv = herder.makeDigitalBitsValue(
+            txSet->getContentsHash(), (TimePoint)slotIndex,
+            xdr::xvector<UpgradeType, 6>{}, v1SecretKey);
         ext.commit.counter = 1;
         ext.commit.value = xdr::xdr_to_opaque(sv);
         ext.commitQuorumSetHash = qsetHash;
@@ -2499,13 +2800,13 @@ TEST_CASE("slot herder policy", "[herder]")
             REQUIRE(clock.now() < timeout);
         }
     }
-    REQUIRE(herder.getState() == Herder::HERDER_TRACKING_STATE);
+    REQUIRE(herder.getState() == Herder::HERDER_TRACKING_NETWORK_STATE);
     REQUIRE(herder.getSCP().getKnownSlotsCount() == LIMIT);
 
     auto oneSec = std::chrono::seconds(1);
     // let the node go out of sync, it should reach the desired state
     timeout = clock.now() + Herder::CONSENSUS_STUCK_TIMEOUT_SECONDS + oneSec;
-    while (herder.getState() == Herder::HERDER_TRACKING_STATE)
+    while (herder.getState() == Herder::HERDER_TRACKING_NETWORK_STATE)
     {
         clock.crank(false);
         REQUIRE(clock.now() < timeout);
@@ -2577,7 +2878,6 @@ TEST_CASE("exclude transactions by operation type", "[herder]")
         VirtualClock clock;
         auto cfg = getTestConfig();
         Application::pointer app = createTestApplication(clock, cfg);
-        app->start();
 
         auto root = TestAccount::createRoot(*app);
         auto acc = getAccount("acc");
@@ -2593,7 +2893,6 @@ TEST_CASE("exclude transactions by operation type", "[herder]")
         auto cfg = getTestConfig();
         cfg.EXCLUDE_TRANSACTIONS_CONTAINING_OPERATION_TYPE = {CREATE_ACCOUNT};
         Application::pointer app = createTestApplication(clock, cfg);
-        app->start();
 
         auto root = TestAccount::createRoot(*app);
         auto acc = getAccount("acc");
@@ -2610,7 +2909,6 @@ TEST_CASE("exclude transactions by operation type", "[herder]")
         auto cfg = getTestConfig();
         cfg.EXCLUDE_TRANSACTIONS_CONTAINING_OPERATION_TYPE = {MANAGE_DATA};
         Application::pointer app = createTestApplication(clock, cfg);
-        app->start();
 
         auto root = TestAccount::createRoot(*app);
         auto acc = getAccount("acc");

@@ -11,7 +11,7 @@ namespace digitalbits
 
 class EndSponsoringFutureReservesOpFrame : public OperationFrame
 {
-    bool isVersionSupported(uint32_t protocolVersion) const override;
+    bool isOpSupported(LedgerHeader const& header) const override;
 
     EndSponsoringFutureReservesResult&
     innerResult()

@@ -31,13 +31,6 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
     Hash networkID = sha256(getTestConfig().NETWORK_PASSPHRASE);
     Simulation::pointer simulation;
 
-    // make closing very slow
-    auto cfgGen = [](int cfgNum) {
-        Config cfg = getTestConfig(cfgNum);
-        cfg.ARTIFICIALLY_SET_CLOSE_TIME_FOR_TESTING = 10000;
-        return cfg;
-    };
-
     const int nbTx = 100;
 
     std::vector<TestAccount> sources;
@@ -46,7 +39,8 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
     std::vector<std::shared_ptr<Application>> nodes;
 
     auto test = [&](std::function<void(int)> inject,
-                    std::function<bool(std::shared_ptr<Application>)> acked) {
+                    std::function<bool(std::shared_ptr<Application>)> acked,
+                    bool syncNodes) {
         simulation->startAllNodes();
 
         nodes = simulation->getNodes();
@@ -79,10 +73,24 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
             }
         }
 
-        expectedSeq = root.getLastSequenceNumber() + 1;
+        if (syncNodes)
+        {
+            // Wait until all nodes externalize
+            simulation->crankUntil(
+                [&]() { return simulation->haveAllExternalized(2, 1); },
+                std::chrono::seconds(1), false);
+            for (auto const& n : nodes)
+            {
+                REQUIRE(n->getLedgerManager().isSynced());
+            }
+        }
+        else
+        {
+            // enough for connections to be made
+            simulation->crankForAtLeast(std::chrono::seconds(1), false);
+        }
 
-        // enough for connections to be made
-        simulation->crankForAtLeast(std::chrono::seconds(1), false);
+        expectedSeq = root.getLastSequenceNumber() + 1;
 
         LOG_DEBUG(DEFAULT_LOG, "Injecting work");
 
@@ -167,19 +175,25 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
             return res;
         };
 
+        auto cfgGen2 = [&](int n) {
+            auto cfg = getTestConfig(n);
+            // adjust delayed tx flooding
+            cfg.FLOOD_TX_PERIOD_MS = 10;
+            return cfg;
+        };
         SECTION("core")
         {
             SECTION("loopback")
             {
                 simulation = Topologies::core(
-                    4, .666f, Simulation::OVER_LOOPBACK, networkID, cfgGen);
-                test(injectTransaction, ackedTransactions);
+                    4, .666f, Simulation::OVER_LOOPBACK, networkID, cfgGen2);
+                test(injectTransaction, ackedTransactions, true);
             }
             SECTION("tcp")
             {
                 simulation = Topologies::core(4, .666f, Simulation::OVER_TCP,
-                                              networkID, cfgGen);
-                test(injectTransaction, ackedTransactions);
+                                              networkID, cfgGen2);
+                test(injectTransaction, ackedTransactions, true);
             }
         }
 
@@ -188,20 +202,28 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
             SECTION("loopback")
             {
                 simulation = Topologies::hierarchicalQuorumSimplified(
-                    5, 10, Simulation::OVER_LOOPBACK, networkID, cfgGen);
-                test(injectTransaction, ackedTransactions);
+                    5, 10, Simulation::OVER_LOOPBACK, networkID, cfgGen2);
+                test(injectTransaction, ackedTransactions, true);
             }
             SECTION("tcp")
             {
                 simulation = Topologies::hierarchicalQuorumSimplified(
-                    5, 10, Simulation::OVER_TCP, networkID, cfgGen);
-                test(injectTransaction, ackedTransactions);
+                    5, 10, Simulation::OVER_TCP, networkID, cfgGen2);
+                test(injectTransaction, ackedTransactions, true);
             }
         }
     }
 
     SECTION("scp messages flooding")
     {
+        auto cfgGen = [](int cfgNum) {
+            Config cfg = getTestConfig(cfgNum);
+            // do not close ledgers
+            cfg.MANUAL_CLOSE = true;
+            cfg.FORCE_SCP = false;
+            return cfg;
+        };
+
         // SCP messages depend on
         // a quorum set
         // a valid transaction set
@@ -247,10 +269,8 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
             auto ct = std::max<uint64>(
                 lcl.header.scpValue.closeTime + 1,
                 VirtualClock::to_time_t(inApp->getClock().system_now()));
-            DigitalBitsValue sv(txSet.getContentsHash(), ct, emptyUpgradeSteps,
-                            DIGITALBITS_VALUE_BASIC);
-
-            herder.signDigitalBitsValue(keys[0], sv);
+            DigitalBitsValue sv = herder.makeDigitalBitsValue(
+                txSet.getContentsHash(), ct, emptyUpgradeSteps, keys[0]);
 
             SCPEnvelope envelope;
 
@@ -318,14 +338,14 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
                 simulation =
                     Topologies::core(4, 1.0f, Simulation::OVER_LOOPBACK,
                                      networkID, cfgGen, quorumAdjuster);
-                test(injectSCP, ackedSCP);
+                test(injectSCP, ackedSCP, false);
             }
             SECTION("tcp")
             {
                 simulation =
                     Topologies::core(4, 1.0f, Simulation::OVER_TCP, networkID,
                                      cfgGen, quorumAdjuster);
-                test(injectSCP, ackedSCP);
+                test(injectSCP, ackedSCP, false);
             }
         }
 
@@ -336,14 +356,14 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
                 simulation = Topologies::hierarchicalQuorumSimplified(
                     5, 10, Simulation::OVER_LOOPBACK, networkID, cfgGen, 1,
                     quorumAdjuster);
-                test(injectSCP, ackedSCP);
+                test(injectSCP, ackedSCP, false);
             }
             SECTION("tcp")
             {
                 simulation = Topologies::hierarchicalQuorumSimplified(
                     5, 10, Simulation::OVER_TCP, networkID, cfgGen, 1,
                     quorumAdjuster);
-                test(injectSCP, ackedSCP);
+                test(injectSCP, ackedSCP, false);
             }
         }
     }

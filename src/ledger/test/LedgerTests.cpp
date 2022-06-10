@@ -2,6 +2,7 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
+#include "herder/Herder.h"
 #include "ledger/LedgerManager.h"
 #include "ledger/LedgerTxn.h"
 #include "main/Application.h"
@@ -21,8 +22,10 @@ TEST_CASE("cannot close ledger with unsupported ledger version", "[ledger]")
         auto const& lcl = app->getLedgerManager().getLastClosedLedgerHeader();
         auto txSet = std::make_shared<TxSetFrame>(lcl.hash);
 
-        DigitalBitsValue sv(txSet->getContentsHash(), 1, emptyUpgradeSteps,
-                        DIGITALBITS_VALUE_BASIC);
+        DigitalBitsValue sv = app->getHerder().makeDigitalBitsValue(
+            txSet->getContentsHash(), 1, emptyUpgradeSteps,
+            app->getConfig().NODE_SEED);
+
         LedgerCloseData ledgerData(lcl.header.ledgerSeq + 1, txSet, sv);
         app->getLedgerManager().closeLedger(ledgerData);
     };

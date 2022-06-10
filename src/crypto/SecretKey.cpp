@@ -8,13 +8,16 @@
 #include "crypto/Curve25519.h"
 #include "crypto/Hex.h"
 #include "crypto/KeyUtils.h"
+#include "crypto/Random.h"
 #include "crypto/StrKey.h"
 #include "main/Config.h"
 #include "transactions/SignatureUtils.h"
+#include "util/GlobalChecks.h"
 #include "util/HashOfHash.h"
 #include "util/Math.h"
 #include "util/RandomEvictionCache.h"
 #include <Tracy.hpp>
+#include <chrono>
 #include <memory>
 #include <mutex>
 #include <sodium.h>
@@ -43,7 +46,7 @@ static Hash
 verifySigCacheKey(PublicKey const& key, Signature const& signature,
                   ByteSlice const& bin)
 {
-    assert(key.type() == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(key.type() == PUBLIC_KEY_TYPE_ED25519);
 
     BLAKE2 hasher;
     hasher.add(key.ed25519());
@@ -83,7 +86,7 @@ SecretKey::getPublicKey() const
 SecretKey::Seed
 SecretKey::getSeed() const
 {
-    assert(mKeyType == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(mKeyType == PUBLIC_KEY_TYPE_ED25519);
 
     Seed seed;
     seed.mKeyType = mKeyType;
@@ -98,7 +101,7 @@ SecretKey::getSeed() const
 SecretValue
 SecretKey::getStrKeySeed() const
 {
-    assert(mKeyType == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(mKeyType == PUBLIC_KEY_TYPE_ED25519);
 
     return strKey::toStrKey(strKey::STRKEY_SEED_ED25519, getSeed().mSeed);
 }
@@ -126,7 +129,7 @@ Signature
 SecretKey::sign(ByteSlice const& bin) const
 {
     ZoneScoped;
-    assert(mKeyType == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(mKeyType == PUBLIC_KEY_TYPE_ED25519);
 
     Signature out(crypto_sign_BYTES, 0);
     if (crypto_sign_detached(out.data(), NULL, bin.data(), bin.size(),
@@ -141,7 +144,7 @@ SecretKey
 SecretKey::random()
 {
     SecretKey sk;
-    assert(sk.mKeyType == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(sk.mKeyType == PUBLIC_KEY_TYPE_ED25519);
     if (crypto_sign_keypair(sk.mPublicKey.ed25519().data(),
                             sk.mSecretKey.data()) != 0)
     {
@@ -153,16 +156,94 @@ SecretKey::random()
     return sk;
 }
 
+struct SignVerifyTestcase
+{
+    SecretKey key;
+    std::vector<uint8_t> msg;
+    Signature sig;
+    void
+    sign()
+    {
+        sig = key.sign(msg);
+    }
+    void
+    verify()
+    {
+        if (!PubKeyUtils::verifySig(key.getPublicKey(), sig, msg))
+        {
+            throw std::runtime_error("verify failed");
+        }
+    }
+    static SignVerifyTestcase
+    create()
+    {
+        SignVerifyTestcase st;
+        st.key = SecretKey::random();
+        st.msg = randomBytes(256);
+        return st;
+    }
+};
+
+void
+SecretKey::benchmarkOpsPerSecond(size_t& sign, size_t& verify,
+                                 size_t iterations, size_t cachedVerifyPasses)
+{
+    namespace ch = std::chrono;
+    using clock = ch::high_resolution_clock;
+    using usec = ch::microseconds;
+
+    std::vector<SignVerifyTestcase> cases;
+
+    for (size_t i = 0; i < iterations; ++i)
+    {
+        cases.push_back(SignVerifyTestcase::create());
+    }
+
+    auto signStart = clock::now();
+    for (auto& c : cases)
+    {
+        c.sign();
+    }
+    auto signEnd = clock::now();
+    auto verifyStart = clock::now();
+    for (auto pass = 0; pass < cachedVerifyPasses; ++pass)
+    {
+        if (pass == 1)
+        {
+            // If we have more than 1 pass, reset clock after
+            // first so we are only measuring cache-hits.
+            verifyStart = clock::now();
+        }
+        for (auto& c : cases)
+        {
+            c.verify();
+        }
+    }
+    auto verifyEnd = clock::now();
+
+    auto signUsec = ch::duration_cast<usec>(signEnd - signStart);
+    auto verifyUsec = ch::duration_cast<usec>(verifyEnd - verifyStart);
+    sign = 1000000 / std::max(size_t(1), size_t(signUsec.count() / iterations));
+    verify =
+        1000000 / std::max(size_t(1), size_t(verifyUsec.count() / iterations));
+}
+
 #ifdef BUILD_TESTS
-static SecretKey
-pseudoRandomForTestingFromPRNG(digitalbits_default_random_engine& engine)
+static std::vector<uint8_t>
+getPRNGBytes(size_t n, digitalbits_default_random_engine& engine)
 {
     std::vector<uint8_t> bytes;
-    for (size_t i = 0; i < crypto_sign_SEEDBYTES; ++i)
+    for (size_t i = 0; i < n; ++i)
     {
         bytes.push_back(static_cast<uint8_t>(engine()));
     }
-    return SecretKey::fromSeed(bytes);
+    return bytes;
+}
+
+static SecretKey
+pseudoRandomForTestingFromPRNG(digitalbits_default_random_engine& engine)
+{
+    return SecretKey::fromSeed(getPRNGBytes(crypto_sign_SEEDBYTES, engine));
 }
 
 SecretKey
@@ -189,7 +270,7 @@ SecretKey
 SecretKey::fromSeed(ByteSlice const& seed)
 {
     SecretKey sk;
-    assert(sk.mKeyType == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(sk.mKeyType == PUBLIC_KEY_TYPE_ED25519);
 
     if (seed.size() != crypto_sign_SEEDBYTES)
     {
@@ -217,7 +298,7 @@ SecretKey::fromStrKeySeed(std::string const& strKeySeed)
     }
 
     SecretKey sk;
-    assert(sk.mKeyType == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(sk.mKeyType == PUBLIC_KEY_TYPE_ED25519);
     if (crypto_sign_seed_keypair(sk.mPublicKey.ed25519().data(),
                                  sk.mSecretKey.data(), seed.data()) != 0)
     {
@@ -315,7 +396,7 @@ PubKeyUtils::verifySig(PublicKey const& key, Signature const& signature,
                        ByteSlice const& bin)
 {
     ZoneScoped;
-    assert(key.type() == PUBLIC_KEY_TYPE_ED25519);
+    releaseAssert(key.type() == PUBLIC_KEY_TYPE_ED25519);
     if (signature.size() != 64)
     {
         return false;
@@ -336,11 +417,11 @@ PubKeyUtils::verifySig(PublicKey const& key, Signature const& signature,
 
     std::string missStr("miss");
     ZoneText(missStr.c_str(), missStr.size());
-    ++gVerifyCacheMiss;
     bool ok =
         (crypto_sign_verify_detached(signature.data(), bin.data(), bin.size(),
                                      key.ed25519().data()) == 0);
     std::lock_guard<std::mutex> guard(gVerifySigCacheMutex);
+    ++gVerifyCacheMiss;
     gVerifySigCache.put(cacheKey, ok);
     return ok;
 }
@@ -354,6 +435,14 @@ PubKeyUtils::random()
     randombytes_buf(pk.ed25519().data(), pk.ed25519().size());
     return pk;
 }
+
+#ifdef BUILD_TESTS
+PublicKey
+PubKeyUtils::pseudoRandomForTesting()
+{
+    return SecretKey::pseudoRandomForTesting().getPublicKey();
+}
+#endif
 
 static void
 logPublicKey(std::ostream& s, PublicKey const& pk)
@@ -422,6 +511,20 @@ HashUtils::random()
     randombytes_buf(res.data(), res.size());
     return res;
 }
+
+#ifdef BUILD_TESTS
+Hash
+HashUtils::pseudoRandomForTesting()
+{
+    Hash res;
+    auto bytes = getPRNGBytes(res.size(), gRandomEngine);
+    for (size_t i = 0; i < bytes.size(); ++i)
+    {
+        res[i] = bytes[i];
+    }
+    return res;
+}
+#endif
 }
 
 namespace std
@@ -429,7 +532,8 @@ namespace std
 size_t
 hash<digitalbits::PublicKey>::operator()(digitalbits::PublicKey const& k) const noexcept
 {
-    assert(k.type() == digitalbits::PUBLIC_KEY_TYPE_ED25519);
+    using namespace digitalbits;
+    releaseAssert(k.type() == digitalbits::PUBLIC_KEY_TYPE_ED25519);
 
     return std::hash<digitalbits::uint256>()(k.ed25519());
 }

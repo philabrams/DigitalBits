@@ -35,11 +35,35 @@ class HerderSCPDriver;
 class HerderImpl : public Herder
 {
   public:
+    struct ConsensusData
+    {
+        uint64_t mConsensusIndex{0};
+        TimePoint mConsensusCloseTime{0};
+    };
+
+    void setTrackingSCPState(uint64_t index, DigitalBitsValue const& value,
+                             bool isTrackingNetwork) override;
+
+    // returns the latest known ledger from the network, requires Herder to be
+    // in fully booted state
+    uint32 trackingConsensusLedgerIndex() const override;
+
+    TimePoint trackingConsensusCloseTime() const;
+
+    // the ledger index that we expect to externalize next
+    uint32
+    nextConsensusLedgerIndex() const
+    {
+        return trackingConsensusLedgerIndex() + 1;
+    }
+
+    void lostSync();
+
     HerderImpl(Application& app);
     ~HerderImpl();
 
     State getState() const override;
-    std::string getStateHuman() const override;
+    std::string getStateHuman(State st) const override;
 
     void syncMetrics() override;
 
@@ -47,7 +71,9 @@ class HerderImpl : public Herder
     void bootstrap() override;
     void shutdown() override;
 
-    void restoreState() override;
+    void start() override;
+
+    void lastClosedLedgerIncreased() override;
 
     SCP& getSCP();
     HerderSCPDriver&
@@ -56,18 +82,39 @@ class HerderImpl : public Herder
         return mHerderSCPDriver;
     }
 
+    bool
+    isTracking() const
+    {
+        return mState == State::HERDER_TRACKING_NETWORK_STATE;
+    }
+
     void processExternalized(uint64 slotIndex, DigitalBitsValue const& value);
-    void valueExternalized(uint64 slotIndex, DigitalBitsValue const& value);
+    void valueExternalized(uint64 slotIndex, DigitalBitsValue const& value,
+                           bool isLatestSlot);
     void emitEnvelope(SCPEnvelope const& envelope);
 
     TransactionQueue::AddResult
     recvTransaction(TransactionFrameBasePtr tx) override;
 
     EnvelopeStatus recvSCPEnvelope(SCPEnvelope const& envelope) override;
+#ifdef BUILD_TESTS
     EnvelopeStatus recvSCPEnvelope(SCPEnvelope const& envelope,
                                    const SCPQuorumSet& qset,
                                    TxSetFrame txset) override;
 
+    void externalizeValue(std::shared_ptr<TxSetFrame> txSet, uint32_t ledgerSeq,
+                          uint64_t closeTime,
+                          xdr::xvector<UpgradeType, 6> const& upgrades,
+                          std::optional<SecretKey> skToSignValue) override;
+
+    VirtualTimer const&
+    getTriggerTimer() const override
+    {
+        return mTriggerTimer;
+    }
+
+    uint32_t mTriggerNextLedgerSeq{0};
+#endif
     void sendSCPStateToPeer(uint32 ledgerSeq, Peer::pointer peer) override;
 
     bool recvSCPQuorumSet(Hash const& hash, const SCPQuorumSet& qset) override;
@@ -79,8 +126,12 @@ class HerderImpl : public Herder
 
     void processSCPQueue();
 
-    uint32_t getCurrentLedgerSeq() const override;
     uint32 getMinLedgerSeqToAskPeers() const override;
+
+    uint32_t getMinLedgerSeqToRemember() const override;
+
+    bool isNewerNominationOrBallotSt(SCPStatement const& oldSt,
+                                     SCPStatement const& newSt) override;
 
     SequenceNumber getMaxSeqInPendingTxs(AccountID const&) override;
 
@@ -105,6 +156,11 @@ class HerderImpl : public Herder
                                                     bool fullKeys) override;
     QuorumTracker::QuorumMap const& getCurrentlyTrackedQuorum() const override;
 
+    virtual DigitalBitsValue
+    makeDigitalBitsValue(Hash const& txSetHash, uint64_t closeTime,
+                     xdr::xvector<UpgradeType, 6> const& upgrades,
+                     SecretKey const& s) override;
+
 #ifdef BUILD_TESTS
     // used for testing
     PendingEnvelopes& getPendingEnvelopes();
@@ -119,8 +175,6 @@ class HerderImpl : public Herder
 
     // helper function to verify SCPValues are signed
     bool verifyDigitalBitsValueSignature(DigitalBitsValue const& sv);
-    // helper function to sign SCPValues
-    void signDigitalBitsValue(SecretKey const& s, DigitalBitsValue& sv);
 
   private:
     // return true if values referenced by envelope have a valid close time:
@@ -134,15 +188,15 @@ class HerderImpl : public Herder
     ctValidityOffset(uint64_t ct, std::chrono::milliseconds maxCtOffset =
                                       std::chrono::milliseconds::zero());
 
-    void ledgerClosed(bool synchronous);
-
-    void maybeTriggerNextLedger(bool synchronous);
+    void setupTriggerNextLedger();
 
     void startOutOfSyncTimer();
     void outOfSyncRecovery();
     void broadcast(SCPEnvelope const& e);
 
     void processSCPQueueUpToIndex(uint64 slotIndex);
+    void safelyProcessSCPQueue(bool synchronous);
+    void newSlotExternalized(bool synchronous, DigitalBitsValue const& value);
 
     TransactionQueue mTransactionQueue;
 
@@ -243,6 +297,13 @@ class HerderImpl : public Herder
     };
     QuorumMapIntersectionState mLastQuorumMapIntersectionState;
 
-    uint32_t getMinLedgerSeqToRemember() const;
+    State mState;
+    void setState(State st);
+
+    // Information about the most recent tracked SCP slot
+    // Set regardless of whether the local instance if fully in sync with the
+    // network or not (Herder::State is used to properly track the state of
+    // Herder) On startup, this variable is set to LCL
+    ConsensusData mTrackingSCP;
 };
 }

@@ -7,6 +7,7 @@
 #include "crypto/SHA.h"
 #include "crypto/SecretKey.h"
 #include "crypto/SignerKey.h"
+#include "util/GlobalChecks.h"
 #include "xdr/DigitalBits-transaction.h"
 #include <Tracy.hpp>
 
@@ -51,7 +52,14 @@ signHashX(const ByteSlice& x)
     DecoratedSignature result;
     Signature out(0, 0);
     out.resize(static_cast<uint32_t>(x.size()));
-    std::memcpy(out.data(), x.data(), x.size());
+    if (!x.empty() && x.data())
+    {
+        std::memcpy(out.data(), x.data(), x.size());
+    }
+    else
+    {
+        releaseAssertOrThrow(x.empty());
+    }
     result.signature = out;
     result.hint = getHint(sha256(x));
     return result;

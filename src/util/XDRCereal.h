@@ -34,21 +34,36 @@ cereal_override(cereal::JSONOutputArchive& ar, const xdr::opaque_array<N>& s,
                  field);
 }
 
-// We still need one explicit composite-container override because cereal
-// appears to process arrays-of-arrays internally, without calling back through
-// an NVP adaptor.
-template <uint32_t N>
-void
-cereal_override(cereal::JSONOutputArchive& ar,
-                const xdr::xarray<digitalbits::Hash, N>& s, const char* field)
+template <typename T>
+std::enable_if_t<xdr::xdr_traits<T>::is_container>
+cereal_override(cereal::JSONOutputArchive& ar, T const& t, const char* field)
 {
-    std::vector<std::string> tmp;
-    for (auto const& h : s)
+    // CEREAL_SAVE_FUNCTION_NAME in include/cereal/archives/json.hpp runs
+    // ar.setNextName() and ar(). ar() in turns calls process() in
+    // include/cereal/cereal.hpp which calls prologue(), processImpl(),
+    // epilogue(). We are imitating this behavior here by creating a sub-object
+    // using prologue(), printing the content with xdr::archive, and finally
+    // calling epilogue(). We must use xdr::archive instead of ar() because we
+    // need to access the nested cereal_overrides.
+    //
+    // tl;dr This does what ar(cereal::make_nvp(...)) does while using nested
+    // cereal_overrides.
+    ar.setNextName(field);
+    cereal::prologue(ar, t);
+
+    // It does not matter what value we pass here to cereal::make_size_tag
+    // since it will be ignored. See the comment
+    //
+    // > SizeTags are strictly ignored for JSON, they just indicate
+    // > that the current node should be made into an array
+    //
+    // in include/cereal/archives/json.hpp
+    ar(cereal::make_size_tag(0));
+    for (auto const& element : t)
     {
-        tmp.emplace_back(
-            digitalbits::binToHex(digitalbits::ByteSlice(h.data(), h.size())));
+        xdr::archive(ar, element);
     }
-    xdr::archive(ar, tmp, field);
+    cereal::epilogue(ar, t);
 }
 
 template <uint32_t N>
@@ -67,14 +82,72 @@ void cereal_override(cereal::JSONOutputArchive& ar,
                      const digitalbits::MuxedAccount& muxedAccount,
                      const char* field);
 
-void cereal_override(cereal::JSONOutputArchive& ar, const digitalbits::Asset& s,
+void cerealPoolAsset(cereal::JSONOutputArchive& ar, const digitalbits::Asset& asset,
                      const char* field);
+
+void cerealPoolAsset(cereal::JSONOutputArchive& ar,
+                     const digitalbits::TrustLineAsset& asset, const char* field);
+
+void cerealPoolAsset(cereal::JSONOutputArchive& ar,
+                     const digitalbits::ChangeTrustAsset& asset, const char* field);
+
+template <typename T>
+typename std::enable_if<std::is_same<digitalbits::Asset, T>::value ||
+                        std::is_same<digitalbits::TrustLineAsset, T>::value ||
+                        std::is_same<digitalbits::ChangeTrustAsset, T>::value>::type
+cereal_override(cereal::JSONOutputArchive& ar, const T& asset,
+                const char* field)
+{
+    switch (asset.type())
+    {
+    case digitalbits::ASSET_TYPE_NATIVE:
+        xdr::archive(ar, std::string("NATIVE"), field);
+        break;
+    case digitalbits::ASSET_TYPE_POOL_SHARE:
+        cerealPoolAsset(ar, asset, field);
+        break;
+    case digitalbits::ASSET_TYPE_CREDIT_ALPHANUM4:
+    case digitalbits::ASSET_TYPE_CREDIT_ALPHANUM12:
+    {
+        ar.setNextName(field);
+        ar.startNode();
+
+        // asset is templated, so we just pull the assetCode string directly so
+        // we don't have to templatize assetToString
+        std::string code;
+        if (asset.type() == digitalbits::ASSET_TYPE_CREDIT_ALPHANUM4)
+        {
+            digitalbits::assetCodeToStr(asset.alphaNum4().assetCode, code);
+        }
+        else
+        {
+            digitalbits::assetCodeToStr(asset.alphaNum12().assetCode, code);
+        }
+
+        xdr::archive(ar, code, "assetCode");
+        xdr::archive(ar, digitalbits::getIssuer(asset), "issuer");
+        ar.finishNode();
+        break;
+    }
+    default:
+        xdr::archive(ar, std::string("UNKNOWN"), field);
+    }
+}
 
 template <typename T>
 typename std::enable_if<xdr::xdr_traits<T>::is_enum>::type
 cereal_override(cereal::JSONOutputArchive& ar, const T& t, const char* field)
 {
-    std::string name = xdr::xdr_traits<T>::enum_name(t);
+    auto const np = xdr::xdr_traits<T>::enum_name(t);
+    std::string name;
+    if (np != nullptr)
+    {
+        name = np;
+    }
+    else
+    {
+        name = std::to_string(t);
+    }
     xdr::archive(ar, name, field);
 }
 
@@ -104,11 +177,10 @@ cereal_override(cereal::JSONOutputArchive& ar, const xdr::pointer<T>& t,
 // during the enable_if call in the cereal adaptor fails to find them.
 #include <xdrpp/cereal.h>
 
-// If name is a nonempty string, the output string begins with it.
 // If compact = true, the output string will not contain any indentation.
 template <typename T>
 std::string
-xdr_to_string(const T& t, std::string const& name = "", bool compact = false)
+xdr_to_string(const T& t, std::string const& name, bool compact = false)
 {
     std::stringstream os;
 
@@ -118,14 +190,7 @@ xdr_to_string(const T& t, std::string const& name = "", bool compact = false)
         cereal::JSONOutputArchive ar(
             os, compact ? cereal::JSONOutputArchive::Options::NoIndent()
                         : cereal::JSONOutputArchive::Options::Default());
-        if (!name.empty())
-        {
-            ar(cereal::make_nvp(name, t));
-        }
-        else
-        {
-            ar(t);
-        }
+        xdr::archive(ar, t, name.c_str());
     }
     return os.str();
 }

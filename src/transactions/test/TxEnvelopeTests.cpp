@@ -6,6 +6,7 @@
 #include "crypto/Random.h"
 #include "crypto/SignerKey.h"
 #include "crypto/SignerKeyUtils.h"
+#include "herder/Herder.h"
 #include "ledger/LedgerManager.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
@@ -28,6 +29,7 @@
 #include "transactions/TransactionUtils.h"
 #include "transactions/test/SponsorshipTestUtils.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/Timer.h"
 
 using namespace digitalbits;
@@ -41,6 +43,39 @@ using namespace digitalbits::txtest;
     double spend
 */
 
+TEST_CASE("txset - correct apply order", "[tx][envelope]")
+{
+    Config cfg = getTestConfig();
+    cfg.NODE_SEED = SecretKey::fromSeed(sha256("NODE_SEED"));
+
+    VirtualClock clock;
+    auto app = createTestApplication(clock, cfg);
+
+    // set up world
+    auto root = TestAccount::createRoot(*app);
+    const int64_t paymentAmount = app->getLedgerManager().getLastReserve() * 10;
+
+    auto a1 = root.create("a1", paymentAmount);
+    auto b1 = root.create("b1", paymentAmount);
+    a1.pay(b1, 1000);
+    closeLedgerOn(*app, 2, 1, 1, 2016);
+
+    auto tx1 = b1.tx({accountMerge(a1)});
+    auto tx2 = a1.tx({b1.op(payment(root, 110)), root.op(payment(a1, 101))});
+
+    Hash h;
+    h[0] = 2;
+    auto txSet = std::make_shared<TxSetFrame>(h);
+    txSet->add(tx1);
+    txSet->add(tx2);
+
+    // Sort for apply re-orders transaction set
+    auto txs = txSet->sortForApply();
+    REQUIRE(txs.size() == 2);
+    REQUIRE(txs[1]->getFullHash() == tx1->getFullHash());
+    REQUIRE(txs[0]->getFullHash() == tx2->getFullHash());
+}
+
 TEST_CASE("txenvelope", "[tx][envelope]")
 {
     Config cfg = getTestConfig();
@@ -51,7 +86,6 @@ TEST_CASE("txenvelope", "[tx][envelope]")
 
     VirtualClock clock;
     auto app = createTestApplication(clock, cfg);
-    app->start();
 
     // set up world
     auto root = TestAccount::createRoot(*app);
@@ -595,7 +629,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         auto b1 = root.create("b1", paymentAmount);
                         a1.pay(b1, 1000);
 
-                        closeLedgerOn(*app, 3, 1, 1, 2016);
+                        closeLedgerOn(*app, 2, 1, 1, 2016);
 
                         auto runTest = [&](bool txAccountMissing) {
                             // Create merge tx
@@ -633,9 +667,9 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                             REQUIRE(getAccountSigners(root, *app).size() == 1);
 
                             // merge b1 into a1 and attempt the payment tx
-                            auto r = closeLedgerOn(*app, 4, 1, 2, 2016,
+                            auto r = closeLedgerOn(*app, 3, 1, 2, 2016,
                                                    {txMerge, tx},
-                                                    /* strictOrder */ true);
+                                                   /* strictOrder */ true);
 
                             if (txAccountMissing)
                             {
@@ -660,8 +694,11 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                             // However, if the transaction source account is
                             // missing, then signatures can only be removed if
                             // V13 or greater.
-                            if (ledgerVersion < 13 &&
-                                (txAccountMissing || ledgerVersion < 10))
+                            if (protocolVersionIsBefore(
+                                    ledgerVersion, ProtocolVersion::V_13) &&
+                                (txAccountMissing ||
+                                 protocolVersionIsBefore(
+                                     ledgerVersion, ProtocolVersion::V_10)))
                             {
                                 REQUIRE(getAccountSigners(a1, *app).size() ==
                                         1);
@@ -693,7 +730,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         auto b1 = root.create("b1", paymentAmount);
                         a1.pay(b1, 1000);
 
-                        closeLedgerOn(*app, 3, 1, 1, 2016);
+                        closeLedgerOn(*app, 2, 1, 1, 2016);
 
                         for_versions_from(3, *app, [&] {
                             auto tx = b1.tx({accountMerge(a1)},
@@ -941,12 +978,12 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         };
                         for_versions(3, 9, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() == 1);
                         });
                         for_versions_from(10, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() ==
                                     (alternative.autoRemove ? 0 : 1));
                         });
@@ -972,12 +1009,12 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         };
                         for_versions(3, 9, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() == 1);
                         });
                         for_versions_from(10, *app, [&] {
                             setup();
-                            closeLedgerOn(*app, 3, 1, 1, 2010, {tx1, tx2});
+                            closeLedgerOn(*app, 2, 1, 1, 2010, {tx1, tx2});
                             REQUIRE(getAccountSigners(root, *app).size() ==
                                     (alternative.autoRemove ? 0 : 1));
                         });
@@ -1493,13 +1530,10 @@ TEST_CASE("txenvelope", "[tx][envelope]")
             txFrame = root.tx({createAccount(a1, paymentAmount)});
             txSet->add(txFrame);
 
-            // close this ledger
-            DigitalBitsValue sv(txSet->getContentsHash(), 1, emptyUpgradeSteps,
-                            DIGITALBITS_VALUE_BASIC);
-            LedgerCloseData ledgerData(1, txSet, sv);
-            app->getLedgerManager().closeLedger(ledgerData);
+            // Close this ledger
+            app->getHerder().externalizeValue(txSet, 2, 1, emptyUpgradeSteps);
 
-            REQUIRE(app->getLedgerManager().getLastClosedLedgerNum() == 3);
+            REQUIRE(app->getLedgerManager().getLastClosedLedgerNum() == 2);
         };
 
         {
@@ -1558,7 +1592,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMinTime(txFrame, start + 1000);
                         setMaxTime(txFrame, start + 10000);
 
-                        closeLedgerOn(*app, 4, start + 1);
+                        closeLedgerOn(*app, 3, start + 1);
                         applyCheck(txFrame, *app);
 
                         REQUIRE(txFrame->getResultCode() == txTOO_EARLY);
@@ -1573,7 +1607,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         getSignatures(txFrame).clear();
                         txFrame->addSignature(root);
 
-                        closeLedgerOn(*app, 4, start + 1);
+                        closeLedgerOn(*app, 3, start + 1);
                         applyCheck(txFrame, *app);
                         REQUIRE(txFrame->getResultCode() == txSUCCESS);
                     }
@@ -1585,7 +1619,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMinTime(txFrame, 1000);
                         setMaxTime(txFrame, start);
 
-                        closeLedgerOn(*app, 4, start + 1);
+                        closeLedgerOn(*app, 3, start + 1);
                         applyCheck(txFrame, *app);
                         REQUIRE(txFrame->getResultCode() == txTOO_LATE);
                     }
@@ -1598,7 +1632,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMaxTime(txFrame, 0);
 
                         TimePoint lastClose = getTestDate(1, 1, 2020);
-                        closeLedgerOn(*app, 4, lastClose);
+                        closeLedgerOn(*app, 3, lastClose);
 
                         TimePoint const nextOffset = 2;
                         auto const nextClose = lastClose + nextOffset;
@@ -1667,7 +1701,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         getSignatures(txFrame).clear();
                         txFrame->addSignature(root);
 
-                        closeLedgerOn(*app, 4, 3, 7, 2014);
+                        closeLedgerOn(*app, 3, 3, 7, 2014);
 
                         auto closeTime = app->getLedgerManager()
                                              .getLastClosedLedgerHeader()
@@ -1807,7 +1841,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
         SECTION("merge one of signing accounts")
         {
             a.setOptions(setMasterWeight(0) | setSigner(makeSigner(b, 1)));
-            closeLedgerOn(*app, 3, 1, 1, 2016);
+            closeLedgerOn(*app, 2, 1, 1, 2016);
 
             SECTION("by destination")
             {
@@ -2000,8 +2034,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                                      setOptions(setSigner(makeSigner(b, 2)))});
                     tx2->addSignature(b);
 
-                    auto r =
-                        closeLedgerOn(*app, 3, 1, 2, 2016, {tx1, tx2}, true);
+                    auto r = closeLedgerOn(*app, 2, 1, 2, 2016, {tx1, tx2});
 
                     REQUIRE(tx1->getResultCode() == txSUCCESS);
                     REQUIRE(tx2->getResultCode() == txFAILED);
@@ -2020,7 +2053,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                     a.tx({setOptions(setSigner(makeSigner(b, 1)) |
                                      setMasterWeight(1) | setLowThreshold(2) |
                                      setMedThreshold(2) | setHighThreshold(2)),
-                          setOptions(setHomeDomain("digitalbits.io"))});
+                          setOptions(setHomeDomain("digitalbits.org"))});
                 tx->addSignature(b);
 
                 validateTxResults(tx, *app, {baseFee * 2, txBAD_AUTH_EXTRA});
@@ -2030,7 +2063,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                     a.tx({setOptions(setSigner(makeSigner(b, 1)) |
                                      setMasterWeight(1) | setLowThreshold(2) |
                                      setMedThreshold(2) | setHighThreshold(2)),
-                          setOptions(setHomeDomain("digitalbits.io"))});
+                          setOptions(setHomeDomain("digitalbits.org"))});
                 tx->addSignature(b);
 
                 validateTxResults(

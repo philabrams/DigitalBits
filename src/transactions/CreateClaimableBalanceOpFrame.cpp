@@ -10,11 +10,13 @@
 #include "ledger/TrustLineWrapper.h"
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"
+#include "util/GlobalChecks.h"
+#include "util/ProtocolVersion.h"
 
 namespace digitalbits
 {
 
-int64_t
+static int64_t
 relativeToAbsolute(TimePoint closeTime, int64_t relative)
 {
     return closeTime > static_cast<uint64_t>(INT64_MAX - relative)
@@ -23,7 +25,7 @@ relativeToAbsolute(TimePoint closeTime, int64_t relative)
 }
 
 // convert all relative predicates to absolute predicates
-void
+static void
 updatePredicatesForApply(ClaimPredicate& pred, TimePoint closeTime)
 {
     switch (pred.type())
@@ -68,7 +70,7 @@ updatePredicatesForApply(ClaimPredicate& pred, TimePoint closeTime)
     }
 }
 
-bool
+static bool
 validatePredicate(ClaimPredicate const& pred, uint32_t depth)
 {
     if (depth > 4)
@@ -131,10 +133,10 @@ CreateClaimableBalanceOpFrame::CreateClaimableBalanceOpFrame(
 }
 
 bool
-CreateClaimableBalanceOpFrame::isVersionSupported(
-    uint32_t protocolVersion) const
+CreateClaimableBalanceOpFrame::isOpSupported(LedgerHeader const& header) const
 {
-    return protocolVersion >= 14;
+    return protocolVersionStartsFrom(header.ledgerVersion,
+                                     ProtocolVersion::V_14);
 }
 
 bool
@@ -149,6 +151,12 @@ CreateClaimableBalanceOpFrame::doApply(AbstractLedgerTxn& ltx)
     auto const& asset = mCreateClaimableBalance.asset;
     auto amount = mCreateClaimableBalance.amount;
 
+    // Create claimable balance entry
+    LedgerEntry newClaimableBalance;
+    newClaimableBalance.data.type(CLAIMABLE_BALANCE);
+
+    auto& claimableBalanceEntry = newClaimableBalance.data.claimableBalance();
+
     if (asset.type() == ASSET_TYPE_NATIVE)
     {
         if (getAvailableBalance(header, sourceAccount) < amount)
@@ -158,7 +166,7 @@ CreateClaimableBalanceOpFrame::doApply(AbstractLedgerTxn& ltx)
         }
 
         auto amountOk = addBalance(header, sourceAccount, -amount);
-        assert(amountOk);
+        releaseAssertOrThrow(amountOk);
     }
     else
     {
@@ -179,13 +187,27 @@ CreateClaimableBalanceOpFrame::doApply(AbstractLedgerTxn& ltx)
             innerResult().code(CREATE_CLAIMABLE_BALANCE_UNDERFUNDED);
             return false;
         }
+
+        if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                      ProtocolVersion::V_17))
+        {
+            bool enableClawback;
+            if (getSourceID() == getIssuer(asset))
+            {
+                enableClawback = isClawbackEnabledOnAccount(sourceAccount);
+            }
+            else
+            {
+                enableClawback = trustline.isClawbackEnabled();
+            }
+
+            if (enableClawback)
+            {
+                setClaimableBalanceClawbackEnabled(claimableBalanceEntry);
+            }
+        }
     }
 
-    // Create claimable balance entry
-    LedgerEntry newClaimableBalance;
-    newClaimableBalance.data.type(CLAIMABLE_BALANCE);
-
-    auto& claimableBalanceEntry = newClaimableBalance.data.claimableBalance();
     claimableBalanceEntry.amount = amount;
     claimableBalanceEntry.asset = asset;
 
@@ -232,7 +254,7 @@ CreateClaimableBalanceOpFrame::doCheckValid(uint32_t ledgerVersion)
 {
     auto const& claimants = mCreateClaimableBalance.claimants;
 
-    if (!isAssetValid(mCreateClaimableBalance.asset) ||
+    if (!isAssetValid(mCreateClaimableBalance.asset, ledgerVersion) ||
         mCreateClaimableBalance.amount <= 0 || claimants.empty())
     {
         innerResult().code(CREATE_CLAIMABLE_BALANCE_MALFORMED);
@@ -278,12 +300,12 @@ CreateClaimableBalanceOpFrame::insertLedgerKeysToPrefetch(
 Hash
 CreateClaimableBalanceOpFrame::getBalanceID()
 {
-    OperationID operationID;
-    operationID.type(ENVELOPE_TYPE_OP_ID);
-    operationID.id().sourceAccount = toMuxedAccount(mParentTx.getSourceID());
-    operationID.id().seqNum = mParentTx.getSeqNum();
-    operationID.id().opNum = mOpIndex;
+    HashIDPreimage hashPreimage;
+    hashPreimage.type(ENVELOPE_TYPE_OP_ID);
+    hashPreimage.operationID().sourceAccount = mParentTx.getSourceID();
+    hashPreimage.operationID().seqNum = mParentTx.getSeqNum();
+    hashPreimage.operationID().opNum = mOpIndex;
 
-    return xdrSha256(operationID);
+    return xdrSha256(hashPreimage);
 }
 }

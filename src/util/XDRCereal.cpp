@@ -37,8 +37,31 @@ cereal_override(cereal::JSONOutputArchive& ar,
 }
 
 void
-cereal_override(cereal::JSONOutputArchive& ar, const digitalbits::Asset& s,
+cerealPoolAsset(cereal::JSONOutputArchive& ar, const digitalbits::Asset& asset,
                 const char* field)
 {
-    xdr::archive(ar, digitalbits::assetToString(s), field);
+    xdr::archive(ar, std::string("INVALID"), field);
+}
+
+void
+cerealPoolAsset(cereal::JSONOutputArchive& ar,
+                const digitalbits::TrustLineAsset& asset, const char* field)
+{
+    cereal_override(ar, asset.liquidityPoolID(), field);
+}
+
+void
+cerealPoolAsset(cereal::JSONOutputArchive& ar,
+                const digitalbits::ChangeTrustAsset& asset, const char* field)
+{
+    auto const& cp = asset.liquidityPool().constantProduct();
+
+    ar.setNextName(field);
+    ar.startNode();
+
+    xdr::archive(ar, cp.assetA, "assetA");
+    xdr::archive(ar, cp.assetB, "assetB");
+
+    xdr::archive(ar, cp.fee, "fee");
+    ar.finishNode();
 }

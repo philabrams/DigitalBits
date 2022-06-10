@@ -9,9 +9,9 @@
 #include <chrono>
 #include <map>
 #include <medida/medida.h>
+#include <optional>
 #include <queue>
 #include <set>
-#include <util/optional.h>
 
 /*
 SCP messages that you have received but are waiting to get the info of
@@ -82,7 +82,7 @@ class PendingEnvelopes
     // Tracked cost per slot
     medida::Histogram& mCostPerSlot;
 
-    // discards all SCP envelopes thats use QSet with given hash,
+    // discards all SCP envelopes that use QSet with a given hash,
     // as it is not sane QSet
     void discardSCPEnvelopesWithQSet(Hash const& hash);
 

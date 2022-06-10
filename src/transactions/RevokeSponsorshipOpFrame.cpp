@@ -8,6 +8,7 @@
 #include "ledger/LedgerTxnEntry.h"
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"
+#include "util/ProtocolVersion.h"
 
 namespace digitalbits
 {
@@ -21,9 +22,10 @@ RevokeSponsorshipOpFrame::RevokeSponsorshipOpFrame(Operation const& op,
 }
 
 bool
-RevokeSponsorshipOpFrame::isVersionSupported(uint32_t protocolVersion) const
+RevokeSponsorshipOpFrame::isOpSupported(LedgerHeader const& header) const
 {
-    return protocolVersion >= 14;
+    return protocolVersionStartsFrom(header.ledgerVersion,
+                                     ProtocolVersion::V_14);
 }
 
 static AccountID const&
@@ -390,11 +392,6 @@ RevokeSponsorshipOpFrame::doApply(AbstractLedgerTxn& ltx)
 bool
 RevokeSponsorshipOpFrame::doCheckValid(uint32_t ledgerVersion)
 {
-    if (ledgerVersion <= 14)
-    {
-        return true;
-    }
-
     if (mRevokeSponsorshipOp.type() == REVOKE_SPONSORSHIP_LEDGER_ENTRY)
     {
         auto const& lk = mRevokeSponsorshipOp.ledgerKey();
@@ -405,11 +402,11 @@ RevokeSponsorshipOpFrame::doCheckValid(uint32_t ledgerVersion)
         case TRUSTLINE:
         {
             auto const& tl = lk.trustLine();
-            if (!isAssetValid(tl.asset) ||
+            if (!isAssetValid(tl.asset, ledgerVersion) ||
                 (tl.asset.type() == ASSET_TYPE_NATIVE) ||
-                (getIssuer(tl.asset) == tl.accountID))
+                isIssuer(tl.accountID, tl.asset))
             {
-                innerResult().code(REVOKE_SPONSORSHIP_DOES_NOT_EXIST);
+                innerResult().code(REVOKE_SPONSORSHIP_MALFORMED);
                 return false;
             }
             break;
@@ -417,24 +414,27 @@ RevokeSponsorshipOpFrame::doCheckValid(uint32_t ledgerVersion)
         case OFFER:
             if (lk.offer().offerID <= 0)
             {
-                innerResult().code(REVOKE_SPONSORSHIP_DOES_NOT_EXIST);
+                innerResult().code(REVOKE_SPONSORSHIP_MALFORMED);
                 return false;
             }
             break;
         case DATA:
         {
             auto const& name = lk.data().dataName;
-            if ((name.size() < 1) || !isString32Valid(name))
+            if ((name.size() < 1) || !isStringValid(name))
             {
-                innerResult().code(REVOKE_SPONSORSHIP_DOES_NOT_EXIST);
+                innerResult().code(REVOKE_SPONSORSHIP_MALFORMED);
                 return false;
             }
             break;
         }
         case CLAIMABLE_BALANCE:
             break;
+        case LIQUIDITY_POOL:
+            innerResult().code(REVOKE_SPONSORSHIP_MALFORMED);
+            return false;
         default:
-            abort();
+            throw std::runtime_error("unknown ledger key type");
         }
     }
     return true;

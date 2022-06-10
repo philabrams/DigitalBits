@@ -227,6 +227,8 @@ throwIf(SetOptionsResult const& result)
         throw ex_SET_OPTIONS_BAD_SIGNER{};
     case SET_OPTIONS_INVALID_HOME_DOMAIN:
         throw ex_SET_OPTIONS_INVALID_HOME_DOMAIN{};
+    case SET_OPTIONS_AUTH_REVOCABLE_REQUIRED:
+        throw ex_SET_OPTIONS_AUTH_REVOCABLE_REQUIRED{};
     case SET_OPTIONS_SUCCESS:
         break;
     default:
@@ -249,6 +251,12 @@ throwIf(ChangeTrustResult const& result)
         throw ex_CHANGE_TRUST_LOW_RESERVE{};
     case CHANGE_TRUST_SELF_NOT_ALLOWED:
         throw ex_CHANGE_TRUST_SELF_NOT_ALLOWED{};
+    case CHANGE_TRUST_TRUST_LINE_MISSING:
+        throw ex_CHANGE_TRUST_TRUST_LINE_MISSING{};
+    case CHANGE_TRUST_CANNOT_DELETE:
+        throw ex_CHANGE_TRUST_CANNOT_DELETE{};
+    case CHANGE_TRUST_NOT_AUTH_MAINTAIN_LIABILITIES:
+        throw ex_CHANGE_TRUST_NOT_AUTH_MAINTAIN_LIABILITIES{};
     case CHANGE_TRUST_SUCCESS:
         break;
     default:
@@ -397,6 +405,112 @@ throwIf(ClaimClaimableBalanceResult const& result)
 }
 
 void
+throwIf(ClawbackResult const& result)
+{
+    switch (result.code())
+    {
+    case CLAWBACK_MALFORMED:
+        throw ex_CLAWBACK_MALFORMED{};
+    case CLAWBACK_NO_TRUST:
+        throw ex_CLAWBACK_NO_TRUST{};
+    case CLAWBACK_NOT_CLAWBACK_ENABLED:
+        throw ex_CLAWBACK_NOT_CLAWBACK_ENABLED{};
+    case CLAWBACK_UNDERFUNDED:
+        throw ex_CLAWBACK_UNDERFUNDED{};
+    case CLAWBACK_SUCCESS:
+        break;
+    default:
+        throw ex_UNKNOWN{};
+    }
+}
+
+void
+throwIf(ClawbackClaimableBalanceResult const& result)
+{
+    switch (result.code())
+    {
+    case CLAWBACK_CLAIMABLE_BALANCE_DOES_NOT_EXIST:
+        throw ex_CLAWBACK_CLAIMABLE_BALANCE_DOES_NOT_EXIST{};
+    case CLAWBACK_CLAIMABLE_BALANCE_NOT_ISSUER:
+        throw ex_CLAWBACK_CLAIMABLE_BALANCE_NOT_ISSUER{};
+    case CLAWBACK_CLAIMABLE_BALANCE_NOT_CLAWBACK_ENABLED:
+        throw ex_CLAWBACK_CLAIMABLE_BALANCE_NOT_CLAWBACK_ENABLED{};
+    case CLAWBACK_CLAIMABLE_BALANCE_SUCCESS:
+        break;
+    default:
+        throw ex_UNKNOWN{};
+    }
+}
+
+void
+throwIf(SetTrustLineFlagsResult const& result)
+{
+    switch (result.code())
+    {
+    case SET_TRUST_LINE_FLAGS_MALFORMED:
+        throw ex_SET_TRUST_LINE_FLAGS_MALFORMED{};
+    case SET_TRUST_LINE_FLAGS_NO_TRUST_LINE:
+        throw ex_SET_TRUST_LINE_FLAGS_NO_TRUST_LINE{};
+    case SET_TRUST_LINE_FLAGS_CANT_REVOKE:
+        throw ex_SET_TRUST_LINE_FLAGS_CANT_REVOKE{};
+    case SET_TRUST_LINE_FLAGS_INVALID_STATE:
+        throw ex_SET_TRUST_LINE_FLAGS_INVALID_STATE{};
+    case SET_TRUST_LINE_FLAGS_SUCCESS:
+        break;
+    default:
+        throw ex_UNKNOWN{};
+    }
+}
+
+void
+throwIf(LiquidityPoolDepositResult const& result)
+{
+    switch (result.code())
+    {
+    case LIQUIDITY_POOL_DEPOSIT_MALFORMED:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_MALFORMED{};
+    case LIQUIDITY_POOL_DEPOSIT_NO_TRUST:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_NO_TRUST{};
+    case LIQUIDITY_POOL_DEPOSIT_NOT_AUTHORIZED:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_NOT_AUTHORIZED{};
+    case LIQUIDITY_POOL_DEPOSIT_UNDERFUNDED:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_UNDERFUNDED{};
+    case LIQUIDITY_POOL_DEPOSIT_LINE_FULL:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_LINE_FULL{};
+    case LIQUIDITY_POOL_DEPOSIT_BAD_PRICE:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_BAD_PRICE{};
+    case LIQUIDITY_POOL_DEPOSIT_POOL_FULL:
+        throw ex_LIQUIDITY_POOL_DEPOSIT_POOL_FULL{};
+    case LIQUIDITY_POOL_DEPOSIT_SUCCESS:
+        break;
+    default:
+        throw ex_UNKNOWN{};
+    }
+}
+
+void
+throwIf(LiquidityPoolWithdrawResult const& result)
+{
+    switch (result.code())
+    {
+    case LIQUIDITY_POOL_WITHDRAW_MALFORMED:
+        throw ex_LIQUIDITY_POOL_WITHDRAW_MALFORMED{};
+    case LIQUIDITY_POOL_WITHDRAW_NO_TRUST:
+        throw ex_LIQUIDITY_POOL_WITHDRAW_NO_TRUST{};
+    case LIQUIDITY_POOL_WITHDRAW_UNDERFUNDED:
+        throw ex_LIQUIDITY_POOL_WITHDRAW_UNDERFUNDED{};
+    case LIQUIDITY_POOL_WITHDRAW_LINE_FULL:
+        throw ex_LIQUIDITY_POOL_WITHDRAW_LINE_FULL{};
+    case LIQUIDITY_POOL_WITHDRAW_UNDER_MINIMUM:
+        throw ex_LIQUIDITY_POOL_WITHDRAW_UNDER_MINIMUM{};
+    case LIQUIDITY_POOL_WITHDRAW_SUCCESS:
+        break;
+    default:
+        throw ex_UNKNOWN{};
+    }
+}
+
+void
 throwIf(TransactionResult const& result)
 {
     switch (result.result.code())
@@ -431,6 +545,9 @@ throwIf(TransactionResult const& result)
         break;
     case opNOT_SUPPORTED:
         throw ex_opNOT_SUPPORTED{};
+        break;
+    case opEXCEEDED_WORK_LIMIT:
+        throw ex_opEXCEEDED_WORK_LIMIT{};
         break;
     default:
         throw ex_UNKNOWN{};
@@ -485,6 +602,27 @@ throwIf(TransactionResult const& result)
         break;
     case CLAIM_CLAIMABLE_BALANCE:
         throwIf(opResult.tr().claimClaimableBalanceResult());
+        break;
+    case BEGIN_SPONSORING_FUTURE_RESERVES:
+    case END_SPONSORING_FUTURE_RESERVES:
+    case REVOKE_SPONSORSHIP:
+        // Sponsorship tests catch error codes at a higher level than this.
+        throw std::runtime_error("got error-result in test sponsorship tx");
+        break;
+    case CLAWBACK:
+        throwIf(opResult.tr().clawbackResult());
+        break;
+    case CLAWBACK_CLAIMABLE_BALANCE:
+        throwIf(opResult.tr().clawbackClaimableBalanceResult());
+        break;
+    case SET_TRUST_LINE_FLAGS:
+        throwIf(opResult.tr().setTrustLineFlagsResult());
+        break;
+    case LIQUIDITY_POOL_DEPOSIT:
+        throwIf(opResult.tr().liquidityPoolDepositResult());
+        break;
+    case LIQUIDITY_POOL_WITHDRAW:
+        throwIf(opResult.tr().liquidityPoolWithdrawResult());
         break;
     }
 }

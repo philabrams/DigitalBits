@@ -6,7 +6,6 @@
 #include "ledger/LedgerTxn.h"
 #include "transactions/TransactionUtils.h"
 #include "transactions/simulation/TxSimTransactionFrame.h"
-#include "crypto/SecretKey.h"
 
 namespace digitalbits
 {
@@ -34,26 +33,16 @@ TxSimFeeBumpTransactionFrame::getFee(const digitalbits::LedgerHeader& header,
 
 void
 TxSimFeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
-                                               int64_t baseFee, Hash const& feeID)
+                                               int64_t baseFee)
 {
     resetResults(ltx.loadHeader().current(), baseFee, true);
 
     auto feeSource = digitalbits::loadAccount(ltx, getFeeSourceID());
-
-    SecretKey fskey = SecretKey::fromSeed(feeID);
-    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
-
     if (!feeSource)
     {
         return;
     }
-    if (!feeTarget)
-    {
-        return;
-    }
-
     auto& acc = feeSource.current().data.account();
-    auto& fpAcc = feeTarget.current().data.account();
 
     auto header = ltx.loadHeader();
     int64_t& fee = getResult().feeCharged;
@@ -64,8 +53,6 @@ TxSimFeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
         // are respected. In this case, we allow it to fall below that since it
         // will be caught later in commonValid.
         digitalbits::addBalance(acc.balance, -fee);
-        // send fees to the Foundation's account instead of feePool.
-        digitalbits::addBalance(fpAcc.balance, fee);
         header.current().feePool += fee;
     }
 }

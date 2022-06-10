@@ -14,10 +14,12 @@
 #include "test/test.h"
 #include "util/Logging.h"
 #include "util/Math.h"
+#include "util/finally.h"
 #include "util/types.h"
 
 #include <fmt/format.h>
 
+#include "main/ApplicationUtils.h"
 #include "medida/medida.h"
 #include "medida/reporting/console_reporter.h"
 
@@ -80,7 +82,8 @@ Simulation::setCurrentVirtualTime(VirtualClock::system_time_point t)
 
 Application::pointer
 Simulation::addNode(SecretKey nodeKey, SCPQuorumSet qSet, Config const* cfg2,
-                    bool newDB)
+                    bool newDB, uint32_t startAtLedger,
+                    std::string const& startAtHash)
 {
     auto cfg = cfg2 ? std::make_shared<Config>(*cfg2)
                     : std::make_shared<Config>(newConfig());
@@ -110,7 +113,15 @@ Simulation::addNode(SecretKey nodeKey, SCPQuorumSet qSet, Config const* cfg2,
         clock->setCurrentVirtualTime(mClock.now());
     }
 
-    auto app = Application::create(*clock, *cfg, newDB);
+    Application::pointer app;
+    if (newDB)
+    {
+        app = Application::create(*clock, *cfg, newDB);
+    }
+    else
+    {
+        app = setupApp(*cfg, *clock, startAtLedger, startAtHash);
+    }
     mNodes.emplace(nodeKey.getPublicKey(), Node{clock, app});
 
     return app;
@@ -378,6 +389,14 @@ Simulation::crankAllNodes(int nbTicks)
 
     VirtualTimer mainQuantumTimer(*mIdleApp);
 
+    bool debugFmt = Logging::logDebug("Process");
+
+    auto h = gsl::finally([&]() {
+        if (debugFmt)
+        {
+            Logging::setFmt("<test>");
+        }
+    });
     int i = 0;
     do
     {
@@ -435,6 +454,11 @@ Simulation::crankAllNodes(int nbTicks)
                         // node caught up, don't give it any compute
                         continue;
                     }
+                }
+                if (debugFmt)
+                {
+                    Logging::setFmt(fmt::format(
+                        "<test-{}>", p.second.mApp->getConfig().PEER_PORT));
                 }
                 crankNode(p.first, nextTime);
             }

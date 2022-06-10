@@ -3,8 +3,11 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "herder/Upgrades.h"
+#include "crypto/Hex.h"
+#include "crypto/SHA.h"
 #include "database/Database.h"
 #include "database/DatabaseUtils.h"
+#include "ledger/LedgerHeaderUtils.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
@@ -15,12 +18,16 @@
 #include "transactions/TransactionUtils.h"
 #include "util/Decoder.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/Timer.h"
 #include "util/types.h"
 #include <Tracy.hpp>
 #include <cereal/archives/json.hpp>
 #include <cereal/cereal.hpp>
+#include <cereal/types/optional.hpp>
 #include <fmt/format.h>
+#include <optional>
+#include <regex>
 #include <xdrpp/marshal.h>
 
 namespace cereal
@@ -29,11 +36,15 @@ template <class Archive>
 void
 save(Archive& ar, digitalbits::Upgrades::UpgradeParameters const& p)
 {
+    // NB: See 'rewriteOptionalFieldKeys' below before adding any new fields to
+    // this type, and in particular avoid using field names "has" or "val",
+    // or serializing any text fields that might have embedded/quoted JSON.
     ar(make_nvp("time", digitalbits::VirtualClock::to_time_t(p.mUpgradeTime)));
     ar(make_nvp("version", p.mProtocolVersion));
     ar(make_nvp("fee", p.mBaseFee));
-    ar(make_nvp("maxtxsize", p.mMaxTxSize));
+    ar(make_nvp("maxtxsize", p.mMaxTxSetSize));
     ar(make_nvp("reserve", p.mBaseReserve));
+    ar(make_nvp("flags", p.mFlags));
 }
 
 template <class Archive>
@@ -45,8 +56,19 @@ load(Archive& ar, digitalbits::Upgrades::UpgradeParameters& o)
     o.mUpgradeTime = digitalbits::VirtualClock::from_time_t(t);
     ar(make_nvp("version", o.mProtocolVersion));
     ar(make_nvp("fee", o.mBaseFee));
-    ar(make_nvp("maxtxsize", o.mMaxTxSize));
+    ar(make_nvp("maxtxsize", o.mMaxTxSetSize));
     ar(make_nvp("reserve", o.mBaseReserve));
+
+    // the flags upgrade was added after the fields above, so it's possible for
+    // them not to exist in the database
+    try
+    {
+        ar(make_nvp("flags", o.mFlags));
+    }
+    catch (cereal::Exception&)
+    {
+        // flags name not found
+    }
 }
 } // namespace cereal
 
@@ -66,10 +88,50 @@ Upgrades::UpgradeParameters::toJson() const
     return out.str();
 }
 
+static std::string
+rewriteOptionalFieldKeys(std::string s)
+{
+    // When transitioning from C++14 to C++17, we migrated from a custom
+    // implementation of 'optional' types, to using std::optional.
+    //
+    // Unfortunately our previous optional-type serialized like this:
+    //
+    //   {
+    //     "has": true,
+    //     "val": 12345
+    //   }
+    //
+    // Whereas cereal's built-in support for (de)serializing std::optional will
+    // write the same content like this, with the sense of the flag inverted and
+    // the names of both fields changed:
+    //
+    //   {
+    //     "nullopt": false,
+    //     "data": 12345
+    //   }
+    //
+    // We therefore do a very crude (but safe) string-level rewrite of the
+    // former into the latter here. This is safe since none of the fields
+    // serialized in the upgrades structure can collide with the string values
+    // being substituted, and this is the only structure in the entire program
+    // that has this issue.
+    //
+    // Once this code has been in the field long enough to have processed any
+    // pending upgrades deserialized from a database, it should be removed.
+
+    s = std::regex_replace(s, std::regex("\"has\": false"),
+                           "\"nullopt\": true");
+    s = std::regex_replace(s, std::regex("\"has\": true"),
+                           "\"nullopt\": false");
+    s = std::regex_replace(s, std::regex("\"val\":"), "\"data\":");
+    return s;
+}
+
 void
 Upgrades::UpgradeParameters::fromJson(std::string const& s)
 {
-    std::istringstream in(s);
+    std::string s1 = rewriteOptionalFieldKeys(s);
+    std::istringstream in(s1);
     {
         cereal::JSONInputArchive ar(in);
         cereal::load(ar, *this);
@@ -86,9 +148,10 @@ Upgrades::setParameters(UpgradeParameters const& params, Config const& cfg)
     if (params.mProtocolVersion &&
         *params.mProtocolVersion > cfg.LEDGER_PROTOCOL_VERSION)
     {
-        throw std::invalid_argument(fmt::format(
-            "Protocol version error: supported is up to {}, passed is {}",
-            cfg.LEDGER_PROTOCOL_VERSION, *params.mProtocolVersion));
+        throw std::invalid_argument(
+            fmt::format(FMT_STRING("Protocol version error: supported is up to "
+                                   "{:d}, passed is {:d}"),
+                        cfg.LEDGER_PROTOCOL_VERSION, *params.mProtocolVersion));
     }
     mParams = params;
 }
@@ -119,15 +182,24 @@ Upgrades::createUpgradesFor(LedgerHeader const& header) const
         result.emplace_back(LEDGER_UPGRADE_BASE_FEE);
         result.back().newBaseFee() = *mParams.mBaseFee;
     }
-    if (mParams.mMaxTxSize && (header.maxTxSetSize != *mParams.mMaxTxSize))
+    if (mParams.mMaxTxSetSize &&
+        (header.maxTxSetSize != *mParams.mMaxTxSetSize))
     {
         result.emplace_back(LEDGER_UPGRADE_MAX_TX_SET_SIZE);
-        result.back().newMaxTxSetSize() = *mParams.mMaxTxSize;
+        result.back().newMaxTxSetSize() = *mParams.mMaxTxSetSize;
     }
     if (mParams.mBaseReserve && (header.baseReserve != *mParams.mBaseReserve))
     {
         result.emplace_back(LEDGER_UPGRADE_BASE_RESERVE);
         result.back().newBaseReserve() = *mParams.mBaseReserve;
+    }
+    if (mParams.mFlags)
+    {
+        if (LedgerHeaderUtils::getFlags(header) != *mParams.mFlags)
+        {
+            result.emplace_back(LEDGER_UPGRADE_FLAGS);
+            result.back().newFlags() = *mParams.mFlags;
+        }
     }
 
     return result;
@@ -150,9 +222,13 @@ Upgrades::applyTo(LedgerUpgrade const& upgrade, AbstractLedgerTxn& ltx)
     case LEDGER_UPGRADE_BASE_RESERVE:
         applyReserveUpgrade(ltx, upgrade.newBaseReserve());
         break;
+    case LEDGER_UPGRADE_FLAGS:
+        setLedgerHeaderFlag(ltx.loadHeader().current(), upgrade.newFlags());
+        break;
     default:
     {
-        auto s = fmt::format("Unknown upgrade type: {0}", upgrade.type());
+        auto s =
+            fmt::format(FMT_STRING("Unknown upgrade type: {}"), upgrade.type());
         throw std::runtime_error(s);
     }
     }
@@ -164,13 +240,18 @@ Upgrades::toString(LedgerUpgrade const& upgrade)
     switch (upgrade.type())
     {
     case LEDGER_UPGRADE_VERSION:
-        return fmt::format("protocolversion={0}", upgrade.newLedgerVersion());
+        return fmt::format(FMT_STRING("protocolversion={:d}"),
+                           upgrade.newLedgerVersion());
     case LEDGER_UPGRADE_BASE_FEE:
-        return fmt::format("basefee={0}", upgrade.newBaseFee());
+        return fmt::format(FMT_STRING("basefee={:d}"), upgrade.newBaseFee());
     case LEDGER_UPGRADE_MAX_TX_SET_SIZE:
-        return fmt::format("maxtxsetsize={0}", upgrade.newMaxTxSetSize());
+        return fmt::format(FMT_STRING("maxtxsetsize={:d}"),
+                           upgrade.newMaxTxSetSize());
     case LEDGER_UPGRADE_BASE_RESERVE:
-        return fmt::format("basereserve={0}", upgrade.newBaseReserve());
+        return fmt::format(FMT_STRING("basereserve={:d}"),
+                           upgrade.newBaseReserve());
+    case LEDGER_UPGRADE_FLAGS:
+        return fmt::format(FMT_STRING("flags={:d}"), upgrade.newFlags());
     default:
         return "<unsupported>";
     }
@@ -182,23 +263,25 @@ Upgrades::toString() const
     std::stringstream r;
     bool first = true;
 
-    auto appendInfo = [&](std::string const& s, optional<uint32> const& o) {
+    auto appendInfo = [&](std::string const& s,
+                          std::optional<uint32> const& o) {
         if (o)
         {
             if (first)
             {
                 r << fmt::format(
-                    "upgradetime={}",
+                    FMT_STRING("upgradetime={}"),
                     VirtualClock::systemPointToISOString(mParams.mUpgradeTime));
                 first = false;
             }
-            r << fmt::format(", {}={}", s, *o);
+            r << fmt::format(FMT_STRING(", {}={:d}"), s, *o);
         }
     };
     appendInfo("protocolversion", mParams.mProtocolVersion);
     appendInfo("basefee", mParams.mBaseFee);
     appendInfo("basereserve", mParams.mBaseReserve);
-    appendInfo("maxtxsize", mParams.mMaxTxSize);
+    appendInfo("maxtxsetsize", mParams.mMaxTxSetSize);
+    appendInfo("flags", mParams.mFlags);
 
     return r.str();
 }
@@ -217,7 +300,7 @@ Upgrades::removeUpgrades(std::vector<UpgradeType>::const_iterator beginUpdates,
     if (res.mUpgradeTime + Upgrades::UPDGRADE_EXPIRATION_HOURS <=
         VirtualClock::from_time_t(closeTime))
     {
-        auto resetParamIfSet = [&](optional<uint32>& o) {
+        auto resetParamIfSet = [&](std::optional<uint32>& o) {
             if (o)
             {
                 o.reset();
@@ -227,13 +310,14 @@ Upgrades::removeUpgrades(std::vector<UpgradeType>::const_iterator beginUpdates,
 
         resetParamIfSet(res.mProtocolVersion);
         resetParamIfSet(res.mBaseFee);
-        resetParamIfSet(res.mMaxTxSize);
+        resetParamIfSet(res.mMaxTxSetSize);
         resetParamIfSet(res.mBaseReserve);
+        resetParamIfSet(res.mFlags);
 
         return res;
     }
 
-    auto resetParam = [&](optional<uint32>& o, uint32 v) {
+    auto resetParam = [&](std::optional<uint32>& o, uint32 v) {
         if (o && *o == v)
         {
             o.reset();
@@ -262,10 +346,13 @@ Upgrades::removeUpgrades(std::vector<UpgradeType>::const_iterator beginUpdates,
             resetParam(res.mBaseFee, lu.newBaseFee());
             break;
         case LEDGER_UPGRADE_MAX_TX_SET_SIZE:
-            resetParam(res.mMaxTxSize, lu.newMaxTxSetSize());
+            resetParam(res.mMaxTxSetSize, lu.newMaxTxSetSize());
             break;
         case LEDGER_UPGRADE_BASE_RESERVE:
             resetParam(res.mBaseReserve, lu.newBaseReserve());
+            break;
+        case LEDGER_UPGRADE_FLAGS:
+            resetParam(res.mFlags, lu.newFlags());
             break;
         default:
             // skip unknown
@@ -310,6 +397,12 @@ Upgrades::isValidForApply(UpgradeType const& opaqueUpgrade,
     case LEDGER_UPGRADE_BASE_RESERVE:
         res = res && (upgrade.newBaseReserve() != 0);
         break;
+    case LEDGER_UPGRADE_FLAGS:
+        res = res &&
+              protocolVersionStartsFrom(header.ledgerVersion,
+                                        ProtocolVersion::V_18) &&
+              (upgrade.newFlags() & ~MASK_LEDGER_HEADER_FLAGS) == 0;
+        break;
     default:
         res = false;
     }
@@ -334,11 +427,13 @@ Upgrades::isValidForNomination(LedgerUpgrade const& upgrade,
     case LEDGER_UPGRADE_BASE_FEE:
         return mParams.mBaseFee && (upgrade.newBaseFee() == *mParams.mBaseFee);
     case LEDGER_UPGRADE_MAX_TX_SET_SIZE:
-        return mParams.mMaxTxSize &&
-               (upgrade.newMaxTxSetSize() == *mParams.mMaxTxSize);
+        return mParams.mMaxTxSetSize &&
+               (upgrade.newMaxTxSetSize() == *mParams.mMaxTxSetSize);
     case LEDGER_UPGRADE_BASE_RESERVE:
         return mParams.mBaseReserve &&
                (upgrade.newBaseReserve() == *mParams.mBaseReserve);
+    case LEDGER_UPGRADE_FLAGS:
+        return mParams.mFlags && (upgrade.newFlags() == *mParams.mFlags);
     default:
         return false;
     }
@@ -411,7 +506,7 @@ Upgrades::storeUpgradeHistory(Database& db, uint32_t ledgerSeq,
     st.exchange(soci::use(upgradeChanges64));
     st.define_and_bind();
     {
-        auto timer = db.getInsertTimer("upgradehistory");
+        ZoneNamedN(insertUpgradeZone, "insert upgradehistory", true);
         st.execute(true);
     }
 
@@ -427,6 +522,14 @@ Upgrades::deleteOldEntries(Database& db, uint32_t ledgerSeq, uint32_t count)
     ZoneScoped;
     DatabaseUtils::deleteOldEntriesHelper(db.getSession(), ledgerSeq, count,
                                           "upgradehistory", "ledgerseq");
+}
+
+void
+Upgrades::deleteNewerEntries(Database& db, uint32_t ledgerSeq)
+{
+    ZoneScoped;
+    DatabaseUtils::deleteNewerEntriesHelper(db.getSession(), ledgerSeq,
+                                            "upgradehistory", "ledgerseq");
 }
 
 static void
@@ -496,7 +599,7 @@ getAvailableLimitExcludingLiabilities(AccountID const& accountID,
     {
         LedgerKey key(TRUSTLINE);
         key.trustLine().accountID = accountID;
-        key.trustLine().asset = asset;
+        key.trustLine().asset = assetToTrustLineAsset(asset);
         auto trust = ltx.loadWithoutRecord(key);
         if (trust && isAuthorizedToMaintainLiabilities(trust))
         {
@@ -696,7 +799,7 @@ prepareLiabilities(AbstractLedgerTxn& ltx, LedgerTxnHeader const& header)
     for (auto& accountOffers : offersByAccount)
     {
         // The purpose of std::unique_ptr here is to have a special value
-        // (nullptr) to indicate that an integer overflow would have occured.
+        // (nullptr) to indicate that an integer overflow would have occurred.
         // Overflow is possible here because existing offers were not
         // constrainted to have int64_t liabilities. This must be carefully
         // handled in what follows.
@@ -806,9 +909,12 @@ prepareLiabilities(AbstractLedgerTxn& ltx, LedgerTxnHeader const& header)
                     ++nChangedTrustLines;
                 }
 
-                // the deltas should only be positive when liabilities were
-                // introduced in ledgerVersion 10
-                if (header.current().ledgerVersion > 10 &&
+                // The deltas could be negative when liabilities were
+                // introduced in ledgerVersion 10. This was fixed and
+                // ledgerVersion 11 and starting from it deltas should be
+                // positive.
+                if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                              ProtocolVersion::V_11) &&
                     (deltaSelling > 0 || deltaBuying > 0))
                 {
                     throw std::runtime_error("invalid liabilities delta");
@@ -843,6 +949,51 @@ prepareLiabilities(AbstractLedgerTxn& ltx, LedgerTxnHeader const& header)
               nUpdatedOffers[UpdateOfferResult::Erase]);
 }
 
+static void
+upgradeFromProtocol15To16(AbstractLedgerTxn& ltx)
+{
+    if (gIsProductionNetwork)
+    {
+        auto const sellerStrKey =
+            "GBGP52VDS2U3F4VZHEMD4MDDM7YIODXLYVGOZLYSTAD6PZK45JXILTAX";
+        auto const offerID = 289733046;
+
+        auto const sellerID = KeyUtils::fromStrKey<PublicKey>(sellerStrKey);
+        auto seller = digitalbits::loadAccountWithoutRecord(ltx, sellerID);
+        auto offer = digitalbits::loadOffer(ltx, sellerID, offerID);
+
+        if (offer)
+        {
+            // Seller exists if offer exists
+            auto const& ae = seller.current().data.account();
+            if (ae.ext.v() == 1 && ae.ext.v1().ext.v() == 2)
+            {
+                CLOG_ERROR(Ledger,
+                           "Account {} has AccountEntryExtensionV2, cannot "
+                           "complete upgrade",
+                           sellerStrKey);
+                return;
+            }
+
+            auto const sponsorStrKey =
+                "GAS3CQSW3HE27IF5KDWKCM7K6FG6AHRHWOUVBUWIRV4ZGTJMPBXNGATF";
+            auto const sponsorID =
+                KeyUtils::fromStrKey<PublicKey>(sponsorStrKey);
+            auto const& le = offer.current();
+            if (le.ext.v() == 1 && le.ext.v1().sponsoringID &&
+                *le.ext.v1().sponsoringID == sponsorID)
+            {
+                offer.current().ext.v(0);
+                CLOG_ERROR(Ledger, "Sponsorship removed from offer {}",
+                           offerID);
+                return;
+            }
+        }
+
+        CLOG_ERROR(Ledger, "Offer {} does not exist", offerID);
+    }
+}
+
 void
 Upgrades::applyVersionUpgrade(AbstractLedgerTxn& ltx, uint32_t newVersion)
 {
@@ -850,9 +1001,17 @@ Upgrades::applyVersionUpgrade(AbstractLedgerTxn& ltx, uint32_t newVersion)
     uint32_t prevVersion = header.current().ledgerVersion;
 
     header.current().ledgerVersion = newVersion;
-    if (header.current().ledgerVersion >= 10 && prevVersion < 10)
+    if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                  ProtocolVersion::V_10) &&
+        protocolVersionIsBefore(prevVersion, ProtocolVersion::V_10))
     {
         prepareLiabilities(ltx, header);
+    }
+    else if (protocolVersionEquals(header.current().ledgerVersion,
+                                   ProtocolVersion::V_16) &&
+             protocolVersionEquals(prevVersion, ProtocolVersion::V_15))
+    {
+        upgradeFromProtocol15To16(ltx);
     }
 }
 
@@ -863,7 +1022,9 @@ Upgrades::applyReserveUpgrade(AbstractLedgerTxn& ltx, uint32_t newReserve)
     bool didReserveIncrease = newReserve > header.current().baseReserve;
 
     header.current().baseReserve = newReserve;
-    if (header.current().ledgerVersion >= 10 && didReserveIncrease)
+    if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                  ProtocolVersion::V_10) &&
+        didReserveIncrease)
     {
         prepareLiabilities(ltx, header);
     }

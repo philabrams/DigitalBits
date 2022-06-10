@@ -4,7 +4,11 @@
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
+#include "util/NonCopyable.h"
+#include "util/ProtocolVersion.h"
 #include "xdr/DigitalBits-ledger-entries.h"
+#include "xdr/DigitalBits-ledger.h"
+#include "xdr/DigitalBits-transaction.h"
 #include <algorithm>
 
 namespace digitalbits
@@ -18,6 +22,7 @@ class LedgerTxnEntry;
 class LedgerTxnHeader;
 class TrustLineWrapper;
 class InternalLedgerKey;
+struct ClaimAtom;
 struct LedgerHeader;
 struct LedgerKey;
 struct TransactionEnvelope;
@@ -37,22 +42,50 @@ AccountEntryExtensionV1& prepareAccountEntryExtensionV1(AccountEntry& ae);
 AccountEntryExtensionV2& prepareAccountEntryExtensionV2(AccountEntry& ae);
 TrustLineEntry::_ext_t::_v1_t&
 prepareTrustLineEntryExtensionV1(TrustLineEntry& tl);
+TrustLineEntryExtensionV2& prepareTrustLineEntryExtensionV2(TrustLineEntry& tl);
 LedgerEntryExtensionV1& prepareLedgerEntryExtensionV1(LedgerEntry& le);
+void setLedgerHeaderFlag(LedgerHeader& lh, uint32_t flags);
 
 AccountEntryExtensionV2& getAccountEntryExtensionV2(AccountEntry& ae);
+TrustLineEntryExtensionV2& getTrustLineEntryExtensionV2(TrustLineEntry& le);
 LedgerEntryExtensionV1& getLedgerEntryExtensionV1(LedgerEntry& le);
 
 LedgerKey accountKey(AccountID const& accountID);
 LedgerKey trustlineKey(AccountID const& accountID, Asset const& asset);
+LedgerKey trustlineKey(AccountID const& accountID, TrustLineAsset const& asset);
 LedgerKey offerKey(AccountID const& sellerID, uint64_t offerID);
 LedgerKey dataKey(AccountID const& accountID, std::string const& dataName);
 LedgerKey claimableBalanceKey(ClaimableBalanceID const& balanceID);
+LedgerKey liquidityPoolKey(PoolID const& poolID);
+LedgerKey poolShareTrustLineKey(AccountID const& accountID,
+                                PoolID const& poolID);
 InternalLedgerKey sponsorshipKey(AccountID const& sponsoredID);
 InternalLedgerKey sponsorshipCounterKey(AccountID const& sponsoringID);
 
-uint32_t const FIRST_PROTOCOL_SUPPORTING_OPERATION_LIMITS = 11;
-uint32_t const ACCOUNT_SUBENTRY_LIMIT = 1000;
+ProtocolVersion const FIRST_PROTOCOL_SUPPORTING_OPERATION_LIMITS =
+    ProtocolVersion::V_11;
+
+uint32_t getAccountSubEntryLimit();
+size_t getMaxOffersToCross();
+
+#ifdef BUILD_TESTS
+class TempReduceLimitsForTesting : public NonMovableOrCopyable
+{
+  private:
+    uint32_t mOldAccountSubEntryLimit;
+    size_t mOldMaxOffersToCross;
+
+  public:
+    TempReduceLimitsForTesting(uint32_t accountSubEntryLimit,
+                               size_t maxOffersToCross);
+    ~TempReduceLimitsForTesting();
+};
+
+#endif
+
 int32_t const EXPECTED_CLOSE_TIME_MULT = 2;
+uint32_t const TRUSTLINE_AUTH_FLAGS =
+    AUTHORIZED_FLAG | AUTHORIZED_TO_MAINTAIN_LIABILITIES_FLAG;
 
 LedgerTxnEntry loadAccount(AbstractLedgerTxn& ltx, AccountID const& accountID);
 
@@ -88,8 +121,17 @@ LedgerTxnEntry loadSponsorship(AbstractLedgerTxn& ltx,
 LedgerTxnEntry loadSponsorshipCounter(AbstractLedgerTxn& ltx,
                                       AccountID const& sponsoringID);
 
+LedgerTxnEntry loadPoolShareTrustLine(AbstractLedgerTxn& ltx,
+                                      AccountID const& accountID,
+                                      PoolID const& poolID);
+
+LedgerTxnEntry loadLiquidityPool(AbstractLedgerTxn& ltx, PoolID const& poolID);
+
 void acquireLiabilities(AbstractLedgerTxn& ltx, LedgerTxnHeader const& header,
                         LedgerTxnEntry const& offer);
+
+bool addBalanceSkipAuthorization(LedgerTxnHeader const& header,
+                                 LedgerTxnEntry& entry, int64_t amount);
 
 bool addBalance(LedgerTxnHeader const& header, LedgerTxnEntry& entry,
                 int64_t delta);
@@ -145,20 +187,35 @@ int64_t getSellingLiabilities(LedgerHeader const& header,
 int64_t getSellingLiabilities(LedgerTxnHeader const& header,
                               LedgerTxnEntry const& offer);
 
-uint64_t getStartingSequenceNumber(uint32_t ledgerSeq);
-uint64_t getStartingSequenceNumber(LedgerTxnHeader const& header);
+SequenceNumber getStartingSequenceNumber(uint32_t ledgerSeq);
+SequenceNumber getStartingSequenceNumber(LedgerTxnHeader const& header);
 
 bool isAuthorized(LedgerEntry const& le);
 bool isAuthorized(LedgerTxnEntry const& entry);
 bool isAuthorized(ConstLedgerTxnEntry const& entry);
 
+bool isAuthorizedToMaintainLiabilitiesUnsafe(uint32_t flags);
 bool isAuthorizedToMaintainLiabilities(LedgerEntry const& le);
 bool isAuthorizedToMaintainLiabilities(LedgerTxnEntry const& entry);
 bool isAuthorizedToMaintainLiabilities(ConstLedgerTxnEntry const& entry);
 
 bool isAuthRequired(ConstLedgerTxnEntry const& entry);
 
+bool isClawbackEnabledOnTrustline(TrustLineEntry const& tl);
+bool isClawbackEnabledOnTrustline(LedgerTxnEntry const& entry);
+bool isClawbackEnabledOnAccount(LedgerEntry const& entry);
+bool isClawbackEnabledOnAccount(LedgerTxnEntry const& entry);
+bool isClawbackEnabledOnAccount(ConstLedgerTxnEntry const& entry);
+bool isClawbackEnabledOnClaimableBalance(ClaimableBalanceEntry const& entry);
+bool isClawbackEnabledOnClaimableBalance(LedgerEntry const& entry);
+
+void setClaimableBalanceClawbackEnabled(ClaimableBalanceEntry& cb);
+
 bool isImmutableAuth(LedgerTxnEntry const& entry);
+
+bool isPoolDepositDisabled(LedgerHeader const& header);
+bool isPoolWithdrawalDisabled(LedgerHeader const& header);
+bool isPoolTradingDisabled(LedgerHeader const& header);
 
 void releaseLiabilities(AbstractLedgerTxn& ltx, LedgerTxnHeader const& header,
                         LedgerTxnEntry const& offer);
@@ -166,15 +223,52 @@ void releaseLiabilities(AbstractLedgerTxn& ltx, LedgerTxnHeader const& header,
 AccountID toAccountID(MuxedAccount const& m);
 MuxedAccount toMuxedAccount(AccountID const& a);
 
-void setAuthorized(LedgerTxnHeader const& header, LedgerTxnEntry& entry,
-                   uint32_t authorized);
-
 bool trustLineFlagIsValid(uint32_t flag, uint32_t ledgerVersion);
 bool trustLineFlagIsValid(uint32_t flag, LedgerTxnHeader const& header);
+bool trustLineFlagMaskCheckIsValid(uint32_t flag, uint32_t ledgerVersion);
+bool trustLineFlagAuthIsValid(uint32_t flag);
+
+bool accountFlagIsValid(uint32_t flag, uint32_t ledgerVersion);
+bool accountFlagClawbackIsValid(uint32_t flag, uint32_t ledgerVersion);
+bool accountFlagMaskCheckIsValid(uint32_t flag, uint32_t ledgerVersion);
 
 bool hasMuxedAccount(TransactionEnvelope const& e);
 
 uint64_t getUpperBoundCloseTimeOffset(Application& app, uint64_t lastCloseTime);
 
 bool hasAccountEntryExtV2(AccountEntry const& ae);
+bool hasTrustLineEntryExtV2(TrustLineEntry const& tl);
+
+Asset getAsset(AccountID const& issuer, AssetCode const& assetCode);
+
+bool claimableBalanceFlagIsValid(ClaimableBalanceEntry const& cb);
+
+enum class RemoveResult
+{
+    SUCCESS,
+    LOW_RESERVE,
+    TOO_MANY_SPONSORING
+};
+
+RemoveResult removeOffersAndPoolShareTrustLines(
+    AbstractLedgerTxn& ltx, AccountID const& accountID, Asset const& asset,
+    AccountID const& txSourceID, SequenceNumber txSeqNum, uint32_t opIndex);
+
+// this can delete the pool
+void decrementPoolSharesTrustLineCount(LedgerTxnEntry& liquidityPool);
+void decrementLiquidityPoolUseCount(AbstractLedgerTxn& ltx, Asset const& asset,
+                                    AccountID const& accountID);
+
+ClaimAtom makeClaimAtom(uint32_t ledgerVersion, AccountID const& accountID,
+                        int64_t offerID, Asset const& wheat,
+                        int64_t numWheatReceived, Asset const& sheep,
+                        int64_t numSheepSend);
+
+TrustLineAsset assetToTrustLineAsset(Asset const& asset);
+TrustLineAsset
+changeTrustAssetToTrustLineAsset(ChangeTrustAsset const& ctAsset);
+ChangeTrustAsset assetToChangeTrustAsset(Asset const& asset);
+
+int64_t getPoolWithdrawalAmount(int64_t amountPoolShares,
+                                int64_t totalPoolShares, int64_t reserve);
 }

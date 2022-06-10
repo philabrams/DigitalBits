@@ -11,16 +11,16 @@
 #include "main/Application.h"
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"
+#include "util/ProtocolVersion.h"
 #include "util/XDROperators.h"
 #include <Tracy.hpp>
 
 namespace digitalbits
 {
 
-static const uint32 allAccountFlags =
-    (AUTH_REQUIRED_FLAG | AUTH_REVOCABLE_FLAG | AUTH_IMMUTABLE_FLAG);
 static const uint32 allAccountAuthFlags =
-    (AUTH_REQUIRED_FLAG | AUTH_REVOCABLE_FLAG | AUTH_IMMUTABLE_FLAG);
+    (AUTH_REQUIRED_FLAG | AUTH_REVOCABLE_FLAG | AUTH_IMMUTABLE_FLAG |
+     AUTH_CLAWBACK_ENABLED_FLAG);
 
 SetOptionsOpFrame::SetOptionsOpFrame(Operation const& op, OperationResult& res,
                                      TransactionFrame& parentTx)
@@ -164,6 +164,17 @@ SetOptionsOpFrame::doApply(AbstractLedgerTxn& ltx)
         account.flags = account.flags | *mSetOptions.setFlags;
     }
 
+    // ensure that revocable is set if clawback is set
+    if (mSetOptions.setFlags || mSetOptions.clearFlags)
+    {
+        if (!accountFlagClawbackIsValid(account.flags,
+                                        header.current().ledgerVersion))
+        {
+            innerResult().code(SET_OPTIONS_AUTH_REVOCABLE_REQUIRED);
+            return false;
+        }
+    }
+
     if (mSetOptions.homeDomain)
     {
         account.homeDomain = *mSetOptions.homeDomain;
@@ -217,22 +228,13 @@ SetOptionsOpFrame::doApply(AbstractLedgerTxn& ltx)
 bool
 SetOptionsOpFrame::doCheckValid(uint32_t ledgerVersion)
 {
-    if (mSetOptions.setFlags)
+    if ((mSetOptions.setFlags &&
+         !accountFlagMaskCheckIsValid(*mSetOptions.setFlags, ledgerVersion)) ||
+        (mSetOptions.clearFlags &&
+         !accountFlagMaskCheckIsValid(*mSetOptions.clearFlags, ledgerVersion)))
     {
-        if (*mSetOptions.setFlags & ~allAccountFlags)
-        {
-            innerResult().code(SET_OPTIONS_UNKNOWN_FLAG);
-            return false;
-        }
-    }
-
-    if (mSetOptions.clearFlags)
-    {
-        if (*mSetOptions.clearFlags & ~allAccountFlags)
-        {
-            innerResult().code(SET_OPTIONS_UNKNOWN_FLAG);
-            return false;
-        }
+        innerResult().code(SET_OPTIONS_UNKNOWN_FLAG);
+        return false;
     }
 
     if (mSetOptions.setFlags && mSetOptions.clearFlags)
@@ -286,12 +288,15 @@ SetOptionsOpFrame::doCheckValid(uint32_t ledgerVersion)
                       KeyUtils::convertKey<SignerKey>(getSourceID());
         auto isPublicKey =
             KeyUtils::canConvert<PublicKey>(mSetOptions.signer->key);
-        if (isSelf || (!isPublicKey && ledgerVersion < 3))
+        if (isSelf ||
+            (!isPublicKey &&
+             protocolVersionIsBefore(ledgerVersion, ProtocolVersion::V_3)))
         {
             innerResult().code(SET_OPTIONS_BAD_SIGNER);
             return false;
         }
-        if (mSetOptions.signer->weight > UINT8_MAX && ledgerVersion > 9)
+        if (mSetOptions.signer->weight > UINT8_MAX &&
+            protocolVersionStartsFrom(ledgerVersion, ProtocolVersion::V_10))
         {
             innerResult().code(SET_OPTIONS_BAD_SIGNER);
             return false;
@@ -300,7 +305,7 @@ SetOptionsOpFrame::doCheckValid(uint32_t ledgerVersion)
 
     if (mSetOptions.homeDomain)
     {
-        if (!isString32Valid(*mSetOptions.homeDomain))
+        if (!isStringValid(*mSetOptions.homeDomain))
         {
             innerResult().code(SET_OPTIONS_INVALID_HOME_DOMAIN);
             return false;

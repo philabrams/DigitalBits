@@ -4,12 +4,11 @@
 
 #include "util/asio.h"
 #include "crypto/Hex.h"
-#include "crypto/SHA.h"
+#include "herder/Herder.h"
 #include "herder/LedgerCloseData.h"
 #include "ledger/LedgerManager.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnHeader.h"
-#include "ledger/LedgerHeaderUtils.h"
 #include "lib/catch.hpp"
 #include "main/Application.h"
 #include "test/TestUtils.h"
@@ -33,11 +32,7 @@ TEST_CASE("genesisledger", "[ledger]")
     app->start();
 
     auto const& lcl = app->getLedgerManager().getLastClosedLedgerHeader();
-    // get the ledger closed right after genesis
-    auto & db = app->getDatabase();
-    auto const& header = *digitalbits::LedgerHeaderUtils::loadByHash(db,
-        lcl.header.previousLedgerHash);;        
-
+    auto const& header = lcl.header;
     REQUIRE(header.ledgerVersion == 0);
     REQUIRE(header.previousLedgerHash == Hash{});
     REQUIRE(header.scpValue.txSetHash == Hash{});
@@ -45,9 +40,9 @@ TEST_CASE("genesisledger", "[ledger]")
     REQUIRE(header.scpValue.upgrades.size() == 0);
     REQUIRE(header.txSetResultHash == Hash{});
     REQUIRE(binToHex(header.bucketListHash) ==
-            "9e8b6238ebda174ff73d10c0075e5eace56c2e06d083ee44712f3c1393230b4f");
+            "4e6a8404d33b17eee7031af0b3606b6af8e36fe5a3bff59e4e5e420bd0ad3bf4");
     REQUIRE(header.ledgerSeq == 1);
-    REQUIRE(header.totalCoins == 200000000000000000);
+    REQUIRE(header.totalCoins == 1000000000000000000);
     REQUIRE(header.feePool == 0);
     REQUIRE(header.inflationSeq == 0);
     REQUIRE(header.idPool == 0);
@@ -59,8 +54,8 @@ TEST_CASE("genesisledger", "[ledger]")
     REQUIRE(header.skipList[1] == Hash{});
     REQUIRE(header.skipList[2] == Hash{});
     REQUIRE(header.skipList[3] == Hash{});
-    REQUIRE(binToHex(sha256(xdr::xdr_to_opaque(header))) ==
-            "12896a70c1bb177cf57cabec71fd08768986cf891f4b82f5c43dce8265423ec8");
+    REQUIRE(binToHex(lcl.hash) ==
+            "caf73c70dde8134f792535756cc3212f65007883e8959adf92e48062f401e543");
 }
 
 TEST_CASE("ledgerheader", "[ledger]")
@@ -78,8 +73,9 @@ TEST_CASE("ledgerheader", "[ledger]")
         TxSetFramePtr txSet = make_shared<TxSetFrame>(lastHash);
 
         // close this ledger
-        DigitalBitsValue sv(txSet->getContentsHash(), 1, emptyUpgradeSteps,
-                        DIGITALBITS_VALUE_BASIC);
+        DigitalBitsValue sv = app->getHerder().makeDigitalBitsValue(
+            txSet->getContentsHash(), 1, emptyUpgradeSteps,
+            app->getConfig().NODE_SEED);
         LedgerCloseData ledgerData(lcl.header.ledgerSeq + 1, txSet, sv);
         app->getLedgerManager().closeLedger(ledgerData);
 
@@ -105,8 +101,6 @@ TEST_CASE("base reserve", "[ledger]")
 
     VirtualClock clock;
     auto app = createTestApplication(clock, cfg);
-
-    app->start();
 
     auto const& lcl = app->getLedgerManager().getLastClosedLedgerHeader();
     REQUIRE(lcl.header.baseReserve == 100000000);

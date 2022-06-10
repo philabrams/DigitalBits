@@ -3,6 +3,7 @@
 #include "crypto/Hex.h"
 #include "herder/Upgrades.h"
 #include "main/Application.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include <overlay/OverlayManager.h>
@@ -15,13 +16,13 @@ namespace digitalbits
 
 LedgerCloseData::LedgerCloseData(
     uint32_t ledgerSeq, std::shared_ptr<AbstractTxSetFrameForApply> txSet,
-    DigitalBitsValue const& v)
-    : mLedgerSeq(ledgerSeq), mTxSet(txSet), mValue(v)
+    DigitalBitsValue const& v, std::optional<Hash> const& expectedLedgerHash)
+    : mLedgerSeq(ledgerSeq)
+    , mTxSet(txSet)
+    , mValue(v)
+    , mExpectedLedgerHash(expectedLedgerHash)
 {
-    Value x;
-    Value y(x.begin(), x.end());
-
-    assert(txSet->getContentsHash() == mValue.txSetHash);
+    releaseAssert(txSet->getContentsHash() == mValue.txSetHash);
 }
 
 std::string

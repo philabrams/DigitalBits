@@ -10,25 +10,32 @@
 namespace digitalbits
 {
 
-InMemoryLedgerTxnRoot::InMemoryLedgerTxnRoot()
+InMemoryLedgerTxnRoot::InMemoryLedgerTxnRoot(
+#ifdef BEST_OFFER_DEBUGGING
+    bool bestOfferDebuggingEnabled
+#endif
+    )
     : mHeader(std::make_unique<LedgerHeader>())
+#ifdef BEST_OFFER_DEBUGGING
+    , mBestOfferDebuggingEnabled(bestOfferDebuggingEnabled)
+#endif
 {
 }
 
 void
-InMemoryLedgerTxnRoot::addChild(AbstractLedgerTxn& child)
+InMemoryLedgerTxnRoot::addChild(AbstractLedgerTxn& child, TransactionMode mode)
 {
 }
 
 void
 InMemoryLedgerTxnRoot::commitChild(EntryIterator iter,
-                                   LedgerTxnConsistency cons)
+                                   LedgerTxnConsistency cons) noexcept
 {
-    throw std::runtime_error("committing to stub InMemoryLedgerTxnRoot");
+    printErrorAndAbort("committing to stub InMemoryLedgerTxnRoot");
 }
 
 void
-InMemoryLedgerTxnRoot::rollbackChild()
+InMemoryLedgerTxnRoot::rollbackChild() noexcept
 {
 }
 
@@ -54,6 +61,13 @@ InMemoryLedgerTxnRoot::getBestOffer(Asset const& buying, Asset const& selling,
 UnorderedMap<LedgerKey, LedgerEntry>
 InMemoryLedgerTxnRoot::getOffersByAccountAndAsset(AccountID const& account,
                                                   Asset const& asset)
+{
+    return UnorderedMap<LedgerKey, LedgerEntry>();
+}
+
+UnorderedMap<LedgerKey, LedgerEntry>
+InMemoryLedgerTxnRoot::getPoolShareTrustLinesByAccountAndAsset(
+    AccountID const& account, Asset const& asset)
 {
     return UnorderedMap<LedgerKey, LedgerEntry>();
 }
@@ -121,6 +135,11 @@ InMemoryLedgerTxnRoot::dropClaimableBalances()
 {
 }
 
+void
+InMemoryLedgerTxnRoot::dropLiquidityPools()
+{
+}
+
 double
 InMemoryLedgerTxnRoot::getPrefetchHitRate() const
 {
@@ -133,11 +152,32 @@ InMemoryLedgerTxnRoot::prefetch(UnorderedSet<LedgerKey> const& keys)
     return 0;
 }
 
-#ifdef FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+void InMemoryLedgerTxnRoot::prepareNewObjects(size_t)
+{
+}
+
+#ifdef BUILD_TESTS
 void
 InMemoryLedgerTxnRoot::resetForFuzzer()
 {
     abort();
 }
-#endif // FUZZING_BUILD_MODE_UNSAFE_FOR_PRODUCTION
+#endif // BUILD_TESTS
+
+#ifdef BEST_OFFER_DEBUGGING
+bool
+InMemoryLedgerTxnRoot::bestOfferDebuggingEnabled() const
+{
+    return mBestOfferDebuggingEnabled;
+}
+
+std::shared_ptr<LedgerEntry const>
+InMemoryLedgerTxnRoot::getBestOfferSlow(Asset const& buying,
+                                        Asset const& selling,
+                                        OfferDescriptor const* worseThan,
+                                        std::unordered_set<int64_t>& exclude)
+{
+    return nullptr;
+}
+#endif
 }

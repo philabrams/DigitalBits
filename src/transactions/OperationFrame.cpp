@@ -8,11 +8,15 @@
 #include "transactions/BumpSequenceOpFrame.h"
 #include "transactions/ChangeTrustOpFrame.h"
 #include "transactions/ClaimClaimableBalanceOpFrame.h"
+#include "transactions/ClawbackClaimableBalanceOpFrame.h"
+#include "transactions/ClawbackOpFrame.h"
 #include "transactions/CreateAccountOpFrame.h"
 #include "transactions/CreateClaimableBalanceOpFrame.h"
 #include "transactions/CreatePassiveSellOfferOpFrame.h"
 #include "transactions/EndSponsoringFutureReservesOpFrame.h"
 #include "transactions/InflationOpFrame.h"
+#include "transactions/LiquidityPoolDepositOpFrame.h"
+#include "transactions/LiquidityPoolWithdrawOpFrame.h"
 #include "transactions/ManageBuyOfferOpFrame.h"
 #include "transactions/ManageDataOpFrame.h"
 #include "transactions/ManageSellOfferOpFrame.h"
@@ -22,9 +26,11 @@
 #include "transactions/PaymentOpFrame.h"
 #include "transactions/RevokeSponsorshipOpFrame.h"
 #include "transactions/SetOptionsOpFrame.h"
+#include "transactions/SetTrustLineFlagsOpFrame.h"
 #include "transactions/TransactionFrame.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/XDRCereal.h"
 #include <Tracy.hpp>
 
@@ -71,7 +77,7 @@ OperationFrame::makeHelper(Operation const& op, OperationResult& res,
     case CHANGE_TRUST:
         return std::make_shared<ChangeTrustOpFrame>(op, res, tx);
     case ALLOW_TRUST:
-        return std::make_shared<AllowTrustOpFrame>(op, res, tx);
+        return std::make_shared<AllowTrustOpFrame>(op, res, tx, index);
     case ACCOUNT_MERGE:
         return std::make_shared<MergeOpFrame>(op, res, tx);
     case INFLATION:
@@ -97,6 +103,16 @@ OperationFrame::makeHelper(Operation const& op, OperationResult& res,
                                                                     tx);
     case REVOKE_SPONSORSHIP:
         return std::make_shared<RevokeSponsorshipOpFrame>(op, res, tx);
+    case CLAWBACK:
+        return std::make_shared<ClawbackOpFrame>(op, res, tx);
+    case CLAWBACK_CLAIMABLE_BALANCE:
+        return std::make_shared<ClawbackClaimableBalanceOpFrame>(op, res, tx);
+    case SET_TRUST_LINE_FLAGS:
+        return std::make_shared<SetTrustLineFlagsOpFrame>(op, res, tx, index);
+    case LIQUIDITY_POOL_DEPOSIT:
+        return std::make_shared<LiquidityPoolDepositOpFrame>(op, res, tx);
+    case LIQUIDITY_POOL_WITHDRAW:
+        return std::make_shared<LiquidityPoolWithdrawOpFrame>(op, res, tx);
     default:
         ostringstream err;
         err << "Unknown Tx type: " << op.body.type();
@@ -117,18 +133,12 @@ OperationFrame::apply(SignatureChecker& signatureChecker,
 {
     ZoneScoped;
     bool res;
-    if (Logging::logTrace("Tx"))
-    {
-        CLOG_TRACE(Tx, "Operation: {}", xdr_to_string(mOperation));
-    }
+    CLOG_TRACE(Tx, "{}", xdr_to_string(mOperation, "Operation"));
     res = checkValid(signatureChecker, ltx, true);
     if (res)
     {
         res = doApply(ltx);
-        if (Logging::logTrace("Tx"))
-        {
-            CLOG_TRACE(Tx, "Operation result: {}", xdr_to_string(mResult));
-        }
+        CLOG_TRACE(Tx, "{}", xdr_to_string(mResult, "OperationResult"));
     }
 
     return res;
@@ -140,7 +150,8 @@ OperationFrame::getThresholdLevel() const
     return ThresholdLevel::MEDIUM;
 }
 
-bool OperationFrame::isVersionSupported(uint32_t) const
+bool
+OperationFrame::isOpSupported(LedgerHeader const&) const
 {
     return true;
 }
@@ -206,14 +217,15 @@ OperationFrame::checkValid(SignatureChecker& signatureChecker,
     ZoneScoped;
     // Note: ltx is always rolled back so checkValid never modifies the ledger
     LedgerTxn ltx(ltxOuter);
-    auto ledgerVersion = ltx.loadHeader().current().ledgerVersion;
-    if (!isVersionSupported(ledgerVersion))
+    if (!isOpSupported(ltx.loadHeader().current()))
     {
         mResult.code(opNOT_SUPPORTED);
         return false;
     }
 
-    if (!forApply || ledgerVersion < 10)
+    auto ledgerVersion = ltx.loadHeader().current().ledgerVersion;
+    if (!forApply ||
+        protocolVersionIsBefore(ledgerVersion, ProtocolVersion::V_10))
     {
         if (!checkSignature(signatureChecker, ltx, forApply))
         {

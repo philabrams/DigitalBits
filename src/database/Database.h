@@ -99,22 +99,7 @@ class Database : NonMovableOrCopyable
     static bool gDriversRegistered;
     static void registerDrivers();
     void applySchemaUpgrade(unsigned long vers);
-
-    // Convert the accounts table from using explicit entries for
-    // extension fields into storing the entire extension as opaque XDR.
-    void convertAccountExtensionsToOpaqueXDR();
-    void copyIndividualAccountExtensionFieldsToOpaqueXDR();
-
-    std::string getOldLiabilitySelect(std::string const& table,
-                                      std::string const& fields);
-    void addTextColumn(std::string const& table, std::string const& column);
-    void dropNullableColumn(std::string const& table,
-                            std::string const& column);
-
-    // Convert the trustlines table from using explicit entries for
-    // extension fields into storing the entire extension as opaque XDR.
-    void convertTrustLineExtensionsToOpaqueXDR();
-    void copyIndividualTrustLineExtensionFieldsToOpaqueXDR();
+    void open();
 
   public:
     // Instantiate object and connect to app.getConfig().DATABASE;
@@ -194,23 +179,14 @@ class Database : NonMovableOrCopyable
     // Access the optional SOCI connection pool available for worker
     // threads. Throws an error if !canUsePool().
     soci::connection_pool& getPool();
-
-  protected:
-    // Give clients the opportunity to perform operations on databases while
-    // they're still using old schemas (prior to the upgrade that occurs either
-    // immediately after database creation or after loading a version of
-    // digitalbits-core that introduces a new schema).
-    virtual void
-    actBeforeDBSchemaUpgrade()
-    {
-    }
 };
 
 template <typename T>
 T
-Database::doDatabaseTypeSpecificOperation(DatabaseTypeSpecificOperation<T>& op)
+doDatabaseTypeSpecificOperation(soci::session& session,
+                                DatabaseTypeSpecificOperation<T>& op)
 {
-    auto b = mSession.get_backend();
+    auto b = session.get_backend();
     if (auto sq = dynamic_cast<soci::sqlite3_session_backend*>(b))
     {
         return op.doSqliteSpecificOperation(sq);
@@ -226,6 +202,13 @@ Database::doDatabaseTypeSpecificOperation(DatabaseTypeSpecificOperation<T>& op)
         // Extend this with other cases if we support more databases.
         abort();
     }
+}
+
+template <typename T>
+T
+Database::doDatabaseTypeSpecificOperation(DatabaseTypeSpecificOperation<T>& op)
+{
+    return digitalbits::doDatabaseTypeSpecificOperation(mSession, op);
 }
 
 // Select a set of records using a client-defined query string, then map
@@ -310,6 +293,10 @@ decodeOpaqueXDR(std::string const& in, soci::indicator const& ind, T& out)
     if (ind == soci::i_ok)
     {
         decodeOpaqueXDR(in, out);
+    }
+    else
+    {
+        out = T{};
     }
 }
 }

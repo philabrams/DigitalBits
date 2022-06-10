@@ -12,17 +12,19 @@
 #include "test/TxTests.h"
 #include "test/test.h"
 #include "transactions/SignatureUtils.h"
+#include "transactions/TransactionBridge.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Decoder.h"
 #include "util/Math.h"
-#include "util/optional.h"
 #include "xdr/DigitalBits-ledger-entries.h"
 #include "xdr/DigitalBits-transaction.h"
 #include "xdrpp/marshal.h"
 #include <fmt/format.h>
+#include <optional>
 #include <stdexcept>
 
 using namespace digitalbits;
+using namespace digitalbits::txbridge;
 using namespace digitalbits::txtest;
 
 TEST_CASE("transaction envelope bridge", "[commandhandler]")
@@ -33,10 +35,10 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
     auto baseFee = app->getLedgerManager().getLastTxFee();
 
     std::string const PENDING_RESULT = "{\"status\": \"PENDING\"}";
-    auto notSupportedResult = [](int64_t fee) {
+    auto errorResult = [](TransactionResultCode resultCode, int64_t fee) {
         TransactionResult txRes;
         txRes.feeCharged = fee;
-        txRes.result.code(txNOT_SUPPORTED);
+        txRes.result.code(resultCode);
         auto inner = decoder::encode_b64(xdr::xdr_to_opaque(txRes));
         return "{\"status\": \"ERROR\" , \"error\": \"" + inner + "\"}";
     };
@@ -56,7 +58,7 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
     SECTION("old-style transaction")
     {
         for_all_versions(*app, [&]() {
-            closeLedgerOn(*app, 3, 1, 1, 2017);
+            closeLedgerOn(*app, 2, 1, 1, 2017);
 
             auto root = TestAccount::createRoot(*app);
 
@@ -74,21 +76,56 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
 
     SECTION("new-style transaction v0")
     {
-        for_all_versions(*app, [&]() {
-            closeLedgerOn(*app, 3, 1, 1, 2017);
+        auto timeBoundsTest = [&](xdr::pointer<TimeBounds> timeBounds,
+                                  std::string const& res) {
+            for_all_versions(*app, [&]() {
+                closeLedgerOn(*app, 2, 1, 1, 2017);
 
-            auto root = TestAccount::createRoot(*app);
+                auto root = TestAccount::createRoot(*app);
 
-            TransactionEnvelope env(ENVELOPE_TYPE_TX_V0);
-            auto& tx = env.v0().tx;
-            tx.sourceAccountEd25519 = root.getPublicKey().ed25519();
-            tx.fee = baseFee;
-            tx.seqNum = root.nextSequenceNumber();
-            tx.operations.emplace_back(payment(root, 1));
+                TransactionEnvelope env(ENVELOPE_TYPE_TX_V0);
+                auto& tx = env.v0().tx;
+                tx.sourceAccountEd25519 = root.getPublicKey().ed25519();
+                tx.fee = baseFee;
+                tx.seqNum = root.nextSequenceNumber();
+                tx.operations.emplace_back(payment(root, 1));
+                tx.timeBounds = timeBounds;
 
-            sign(env.v0().signatures, root, ENVELOPE_TYPE_TX, 0, tx);
-            REQUIRE(submit(env) == PENDING_RESULT);
-        });
+                sign(env.v0().signatures, root, ENVELOPE_TYPE_TX, 0, tx);
+
+                REQUIRE(submit(env) == res);
+            });
+        };
+
+        SECTION("valid without timebounds")
+        {
+            xdr::pointer<TimeBounds> timeBounds;
+            timeBoundsTest(timeBounds, PENDING_RESULT);
+        }
+
+        SECTION("valid with timebounds and on time")
+        {
+            xdr::pointer<TimeBounds> timeBounds;
+            timeBounds.activate().minTime = getTestDate(31, 12, 2016);
+            timeBounds.activate().maxTime = getTestDate(2, 1, 2017);
+            timeBoundsTest(timeBounds, PENDING_RESULT);
+        }
+
+        SECTION("invalid with timebounds and too early")
+        {
+            xdr::pointer<TimeBounds> timeBounds;
+            timeBounds.activate().minTime = getTestDate(2, 1, 2017);
+            timeBounds.activate().maxTime = getTestDate(3, 1, 2017);
+            timeBoundsTest(timeBounds, errorResult(txTOO_EARLY, baseFee));
+        }
+
+        SECTION("invalid with timebounds and too late")
+        {
+            xdr::pointer<TimeBounds> timeBounds;
+            timeBounds.activate().minTime = getTestDate(30, 12, 2016);
+            timeBounds.activate().maxTime = getTestDate(31, 12, 2016);
+            timeBoundsTest(timeBounds, errorResult(txTOO_LATE, baseFee));
+        }
     }
 
     auto createV1 = [&]() {
@@ -108,12 +145,13 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
     SECTION("new-style transaction v1")
     {
         for_versions_to(12, *app, [&]() {
-            closeLedgerOn(*app, 3, 1, 1, 2017);
-            REQUIRE(submit(createV1()) == notSupportedResult(baseFee));
+            closeLedgerOn(*app, 2, 1, 1, 2017);
+            REQUIRE(submit(createV1()) ==
+                    errorResult(txNOT_SUPPORTED, baseFee));
         });
 
         for_versions_from(13, *app, [&]() {
-            closeLedgerOn(*app, 3, 1, 1, 2017);
+            closeLedgerOn(*app, 2, 1, 1, 2017);
             REQUIRE(submit(createV1()) == PENDING_RESULT);
         });
     }
@@ -135,12 +173,13 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
         };
 
         for_versions_to(12, *app, [&]() {
-            closeLedgerOn(*app, 3, 1, 1, 2017);
-            REQUIRE(submit(createFeeBump()) == notSupportedResult(2 * baseFee));
+            closeLedgerOn(*app, 2, 1, 1, 2017);
+            REQUIRE(submit(createFeeBump()) ==
+                    errorResult(txNOT_SUPPORTED, 2 * baseFee));
         });
 
         for_versions_from(13, *app, [&]() {
-            closeLedgerOn(*app, 3, 1, 1, 2017);
+            closeLedgerOn(*app, 2, 1, 1, 2017);
             REQUIRE(submit(createFeeBump()) == PENDING_RESULT);
         });
     }
@@ -153,7 +192,6 @@ TEST_CASE("manualclose", "[commandhandler]")
         Config cfg = getTestConfig();
         configure(cfg);
         auto app = createTestApplication(clock, cfg);
-        app->start();
         auto& commandHandler = app->getCommandHandler();
         std::string retStr;
         issue(commandHandler, retStr);
@@ -226,7 +264,6 @@ TEST_CASE("manualclose", "[commandhandler]")
     VirtualClock clock(VirtualClock::VIRTUAL_TIME);
     auto app = createTestApplication(clock, getTestConfig());
     auto& commandHandler = app->getCommandHandler();
-    app->start();
 
     REQUIRE(app->getConfig().MANUAL_CLOSE);
     REQUIRE(app->getConfig().NODE_IS_VALIDATOR);
@@ -246,8 +283,8 @@ TEST_CASE("manualclose", "[commandhandler]")
             .header.scpValue.closeTime;
     };
 
-    auto submitClose = [&](optional<uint32_t> const& ledgerSeq,
-                           optional<TimePoint> const& closeTime,
+    auto submitClose = [&](std::optional<uint32_t> const& ledgerSeq,
+                           std::optional<TimePoint> const& closeTime,
                            std::string& retStr) {
         std::string ledgerSeqParam, closeTimeParam;
         if (ledgerSeq)
@@ -268,8 +305,8 @@ TEST_CASE("manualclose", "[commandhandler]")
         commandHandler.manualClose(params, retStr);
     };
 
-    auto const noLedgerSeq = nullopt<uint32_t>();
-    auto const noCloseTime = nullopt<TimePoint>();
+    std::optional<uint32_t> noLedgerSeq;
+    std::optional<TimePoint> noCloseTime;
 
     SECTION("manual close with no parameters increments sequence number and "
             "increases close time")
@@ -292,7 +329,7 @@ TEST_CASE("manualclose", "[commandhandler]")
             auto const curLedgerSeq = lastLedgerNum();
             auto const expectedNewLedgerSeq = curLedgerSeq + seqNumIncrement;
             auto const minimumExpectedNewCloseTime = lastCloseTime() + 1;
-            submitClose(make_optional<uint32_t>(expectedNewLedgerSeq),
+            submitClose(std::make_optional<uint32_t>(expectedNewLedgerSeq),
                         noCloseTime, retStr);
             CAPTURE(curLedgerSeq);
             CAPTURE(expectedNewLedgerSeq);
@@ -315,7 +352,8 @@ TEST_CASE("manualclose", "[commandhandler]")
             auto const expectedNewCloseTime =
                 curLedgerCloseTime + closeTimeIncrement;
             submitClose(noLedgerSeq,
-                        make_optional<TimePoint>(expectedNewCloseTime), retStr);
+                        std::make_optional<TimePoint>(expectedNewCloseTime),
+                        retStr);
             CAPTURE(curLedgerCloseTime);
             CAPTURE(expectedNewCloseTime);
             CAPTURE(retStr);
@@ -327,14 +365,16 @@ TEST_CASE("manualclose", "[commandhandler]")
         }
     }
 
+    auto const maxLedgerNum =
+        static_cast<uint32_t>(std::numeric_limits<int32_t>::max() - 1);
+
     SECTION("manual close sequence number parameter that just barely does not "
             "overflow int32_t is accepted")
     {
         std::string retStr;
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ + 1);
-        auto maxLedgerNum =
-            static_cast<uint32_t>(std::numeric_limits<int32_t>::max());
-        submitClose(make_optional<uint32_t>(maxLedgerNum), noCloseTime, retStr);
+        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ);
+        submitClose(std::make_optional<uint32_t>(maxLedgerNum), noCloseTime,
+                    retStr);
         CAPTURE(retStr);
         REQUIRE(lastLedgerNum() == maxLedgerNum);
     }
@@ -344,11 +384,8 @@ TEST_CASE("manualclose", "[commandhandler]")
     {
         std::string retStr;
         REQUIRE_THROWS_AS(
-            submitClose(
-                make_optional<uint32_t>(
-                    static_cast<uint32_t>(std::numeric_limits<int32_t>::max()) +
-                    1),
-                noCloseTime, retStr),
+            submitClose(std::make_optional<uint32_t>(maxLedgerNum + 1),
+                        noCloseTime, retStr),
             std::invalid_argument);
     }
 
@@ -358,16 +395,16 @@ TEST_CASE("manualclose", "[commandhandler]")
         uint32_t initialSequenceNumber = LedgerManager::GENESIS_LEDGER_SEQ + 2;
         std::string retStr;
 
-        submitClose(make_optional<uint32_t>(initialSequenceNumber), noCloseTime,
-                    retStr);
+        submitClose(std::make_optional<uint32_t>(initialSequenceNumber),
+                    noCloseTime, retStr);
 
         CHECK_THROWS_AS(
-            submitClose(make_optional<uint32_t>(initialSequenceNumber - 1),
+            submitClose(std::make_optional<uint32_t>(initialSequenceNumber - 1),
                         noCloseTime, retStr),
             std::invalid_argument);
 
         REQUIRE_THROWS_AS(
-            submitClose(make_optional<uint32_t>(initialSequenceNumber),
+            submitClose(std::make_optional<uint32_t>(initialSequenceNumber),
                         noCloseTime, retStr),
             std::invalid_argument);
     }
@@ -378,9 +415,10 @@ TEST_CASE("manualclose", "[commandhandler]")
         "manual close time that does not overflow documented limit is accepted")
     {
         std::string retStr;
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ + 1);
+        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ);
         submitClose(noLedgerSeq,
-                    make_optional<TimePoint>(firstSecondOfYear2200GMT), retStr);
+                    std::make_optional<TimePoint>(firstSecondOfYear2200GMT),
+                    retStr);
         CAPTURE(retStr);
         REQUIRE(lastCloseTime() == firstSecondOfYear2200GMT);
     }
@@ -390,11 +428,12 @@ TEST_CASE("manualclose", "[commandhandler]")
     {
         uint64_t const overflowingCloseTime = firstSecondOfYear2200GMT + 1ULL;
         std::string retStr;
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ + 1);
+        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ);
         CAPTURE(retStr);
         REQUIRE_THROWS_AS(
             submitClose(noLedgerSeq,
-                        make_optional<TimePoint>(overflowingCloseTime), retStr),
+                        std::make_optional<TimePoint>(overflowingCloseTime),
+                        retStr),
             std::invalid_argument);
     }
 
@@ -411,9 +450,9 @@ TEST_CASE("manualclose", "[commandhandler]")
         auto const initialCloseTime = 100;
         std::string retStr;
 
-        submitClose(noLedgerSeq, make_optional<TimePoint>(initialCloseTime),
-                    retStr);
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ + 2);
+        submitClose(noLedgerSeq,
+                    std::make_optional<TimePoint>(initialCloseTime), retStr);
+        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ + 1);
         REQUIRE(lastCloseTime() == initialCloseTime);
         REQUIRE(VirtualClock::to_time_t(app->getClock().system_now()) ==
                 initialCloseTime);
@@ -458,12 +497,11 @@ TEST_CASE("manualclose", "[commandhandler]")
             auto dataOp = txtest::manageData(de.dataName, &de.dataValue);
             auto txFrame = root.tx({dataOp});
             REQUIRE(txFrame->getEnvelope().type() == digitalbits::ENVELOPE_TYPE_TX);
-            txFrame->getEnvelope().v1().tx.timeBounds.activate();
-            txFrame->getEnvelope().v1().tx.timeBounds->minTime = 0;
+            setMinTime(txFrame, 0);
             TimePoint const maxTime =
                 lastCloseTime() + defaultManualCloseTimeInterval +
                 getUpperBoundCloseTimeOffset(*app, lastCloseTime());
-            txFrame->getEnvelope().v1().tx.timeBounds->maxTime = maxTime;
+            setMaxTime(txFrame, maxTime);
             txFrame->getEnvelope().v1().signatures.clear();
             txFrame->addSignature(root);
 
@@ -483,7 +521,7 @@ TEST_CASE("manualclose", "[commandhandler]")
 
             SECTION("Ledger closes on time; transaction is applied")
             {
-                submitClose(noLedgerSeq, make_optional<TimePoint>(maxTime),
+                submitClose(noLedgerSeq, std::make_optional<TimePoint>(maxTime),
                             retStr);
 
                 LedgerTxn lookupTx(app->getLedgerTxnRoot());
@@ -493,8 +531,8 @@ TEST_CASE("manualclose", "[commandhandler]")
 
             SECTION("Ledger closes too late; transaction is not applied")
             {
-                submitClose(noLedgerSeq, make_optional<TimePoint>(maxTime + 1),
-                            retStr);
+                submitClose(noLedgerSeq,
+                            std::make_optional<TimePoint>(maxTime + 1), retStr);
 
                 LedgerTxn lookupTx(app->getLedgerTxnRoot());
                 auto entry = lookupTx.load(LedgerEntryKey(dle));

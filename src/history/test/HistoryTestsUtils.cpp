@@ -24,8 +24,6 @@
 #include "util/XDROperators.h"
 #include "work/WorkScheduler.h"
 
-#include <medida/metrics_registry.h>
-
 using namespace digitalbits;
 using namespace txtest;
 
@@ -301,49 +299,8 @@ TestLedgerChainGenerator::makeLedgerChainFiles(
     return CheckpointEnds(beginRange, last);
 }
 
-CatchupMetrics::CatchupMetrics()
-    : mHistoryArchiveStatesDownloaded{0}
-    , mCheckpointsDownloaded{0}
-    , mLedgersVerified{0}
-    , mLedgerChainsVerificationFailed{0}
-    , mBucketsDownloaded{false}
-    , mBucketsApplied{false}
-    , mTxSetsDownloaded{0}
-    , mTxSetsApplied{0}
-{
-}
-
-CatchupMetrics::CatchupMetrics(
-    uint64_t historyArchiveStatesDownloaded, uint64_t checkpointsDownloaded,
-    uint64_t ledgersVerified, uint64_t ledgerChainsVerificationFailed,
-    uint64_t bucketsDownloaded, uint64_t bucketsApplied,
-    uint64_t txSetsDownloaded, uint64_t txSetsApplied)
-    : mHistoryArchiveStatesDownloaded{historyArchiveStatesDownloaded}
-    , mCheckpointsDownloaded{checkpointsDownloaded}
-    , mLedgersVerified{ledgersVerified}
-    , mLedgerChainsVerificationFailed{ledgerChainsVerificationFailed}
-    , mBucketsDownloaded{bucketsDownloaded}
-    , mBucketsApplied{bucketsApplied}
-    , mTxSetsDownloaded{txSetsDownloaded}
-    , mTxSetsApplied{txSetsApplied}
-{
-}
-
-CatchupMetrics
-operator-(CatchupMetrics const& x, CatchupMetrics const& y)
-{
-    return CatchupMetrics{
-        x.mHistoryArchiveStatesDownloaded - y.mHistoryArchiveStatesDownloaded,
-        x.mCheckpointsDownloaded - y.mCheckpointsDownloaded,
-        x.mLedgersVerified - y.mLedgersVerified,
-        x.mLedgerChainsVerificationFailed - y.mLedgerChainsVerificationFailed,
-        x.mBucketsDownloaded - y.mBucketsDownloaded,
-        x.mBucketsApplied - y.mBucketsApplied,
-        x.mTxSetsDownloaded - y.mTxSetsDownloaded,
-        x.mTxSetsApplied - y.mTxSetsApplied};
-}
-
-CatchupPerformedWork::CatchupPerformedWork(CatchupMetrics const& metrics)
+CatchupPerformedWork::CatchupPerformedWork(
+    CatchupManager::CatchupMetrics const& metrics)
     : mHistoryArchiveStatesDownloaded{metrics.mHistoryArchiveStatesDownloaded}
     , mCheckpointsDownloaded{metrics.mCheckpointsDownloaded}
     , mLedgersVerified{metrics.mLedgersVerified}
@@ -421,8 +378,9 @@ CatchupSimulation::CatchupSimulation(VirtualClock::Mode mode,
     : mClock(mode)
     , mHistoryConfigurator(cg)
     , mCfg(getTestConfig())
-    , mAppPtr(createTestApplication(
-          mClock, mHistoryConfigurator->configure(mCfg, true)))
+    , mAppPtr(createTestApplication(mClock,
+                                    mHistoryConfigurator->configure(mCfg, true),
+                                    /*newDB*/ true, /*startApp*/ false))
     , mApp(*mAppPtr)
 {
     auto dirName = cg->getArchiveDirName();
@@ -512,8 +470,10 @@ CatchupSimulation::generateRandomLedger(uint32_t version)
         upgrades.push_back(UpgradeType{v.begin(), v.end()});
     }
 
-    DigitalBitsValue sv(txSet->getContentsHash(), closeTime, upgrades,
-                    DIGITALBITS_VALUE_BASIC);
+    DigitalBitsValue sv =
+        mApp.getHerder().makeDigitalBitsValue(txSet->getContentsHash(), closeTime,
+                                          upgrades, mApp.getConfig().NODE_SEED);
+
     mLedgerCloseDatas.emplace_back(ledgerSeq, txSet, sv);
     lm.closeLedger(mLedgerCloseDatas.back());
 
@@ -561,7 +521,8 @@ CatchupSimulation::ensureLedgerAvailable(uint32_t targetLedger)
         if (lcl + 1 == mTestProtocolShadowsRemovedLedgerSeq)
         {
             // Force proto 12 upgrade
-            generateRandomLedger(Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED);
+            generateRandomLedger(
+                static_cast<uint32_t>(Bucket::FIRST_PROTOCOL_SHADOWS_REMOVED));
         }
         else
         {
@@ -629,7 +590,7 @@ CatchupSimulation::getAllPublishedCheckpoints() const
         {
             LedgerNumHashPair pair;
             pair.first = *si;
-            pair.second = digitalbits::make_optional<Hash>(*hi);
+            pair.second = std::make_optional<Hash>(*hi);
             res.emplace_back(pair);
         }
         ++hi;
@@ -651,7 +612,7 @@ CatchupSimulation::getLastPublishedCheckpoint() const
         if (hm.isLastLedgerInCheckpoint(*si))
         {
             pair.first = *si;
-            pair.second = digitalbits::make_optional<Hash>(*hi);
+            pair.second = std::make_optional<Hash>(*hi);
             break;
         }
         ++hi;
@@ -707,14 +668,14 @@ CatchupSimulation::catchupOffline(Application::pointer app, uint32_t toLedger,
 {
     CLOG_INFO(History, "starting offline catchup with toLedger={}", toLedger);
 
-    auto startCatchupMetrics = getCatchupMetrics(app);
+    auto startCatchupMetrics = app->getCatchupManager().getCatchupMetrics();
     auto& lm = app->getLedgerManager();
     auto lastLedger = lm.getLastClosedLedgerNum();
     auto mode = extraValidation ? CatchupConfiguration::Mode::OFFLINE_COMPLETE
                                 : CatchupConfiguration::Mode::OFFLINE_BASIC;
     auto catchupConfiguration =
         CatchupConfiguration{toLedger, app->getConfig().CATCHUP_RECENT, mode};
-    lm.startCatchup(catchupConfiguration, nullptr);
+    lm.startCatchup(catchupConfiguration, nullptr, {});
     REQUIRE(!app->getClock().getIOContext().stopped());
 
     auto& cm = app->getCatchupManager();
@@ -733,7 +694,7 @@ CatchupSimulation::catchupOffline(Application::pointer app, uint32_t toLedger,
     {
         CLOG_INFO(History, "Caught up");
 
-        auto endCatchupMetrics = getCatchupMetrics(app);
+        auto endCatchupMetrics = app->getCatchupManager().getCatchupMetrics();
         auto catchupPerformedWork =
             CatchupPerformedWork{endCatchupMetrics - startCatchupMetrics};
 
@@ -757,7 +718,7 @@ CatchupSimulation::catchupOnline(Application::pointer app, uint32_t initLedger,
                                  std::vector<uint32_t> const& ledgersToInject)
 {
     auto& lm = app->getLedgerManager();
-    auto startCatchupMetrics = getCatchupMetrics(app);
+    auto startCatchupMetrics = app->getCatchupManager().getCatchupMetrics();
 
     auto& hm = app->getHistoryManager();
     auto& herder = static_cast<HerderImpl&>(app->getHerder());
@@ -853,7 +814,7 @@ CatchupSimulation::catchupOnline(Application::pointer app, uint32_t initLedger,
         REQUIRE(lm.getLastClosedLedgerNum() ==
                 triggerLedger + bufferLedgers + 1);
 
-        auto endCatchupMetrics = getCatchupMetrics(app);
+        auto endCatchupMetrics = app->getCatchupManager().getCatchupMetrics();
         auto catchupPerformedWork =
             CatchupPerformedWork{endCatchupMetrics - startCatchupMetrics};
 
@@ -869,14 +830,13 @@ CatchupSimulation::catchupOnline(Application::pointer app, uint32_t initLedger,
 void
 CatchupSimulation::externalizeLedger(HerderImpl& herder, uint32_t ledger)
 {
-    // Remember the vectors count from 0, not 3.
-    const int minExternalizedLedgerNo = 3;
-    if (ledger - minExternalizedLedgerNo >= mLedgerCloseDatas.size())
+    // Remember the vectors count from 2, not 0.
+    if (ledger - 2 >= mLedgerCloseDatas.size())
     {
         return;
     }
 
-    auto const& lcd = mLedgerCloseDatas.at(ledger - minExternalizedLedgerNo);
+    auto const& lcd = mLedgerCloseDatas.at(ledger - 2);
 
     CLOG_INFO(History,
               "force-externalizing LedgerCloseData for {} has txhash:{}",
@@ -896,12 +856,12 @@ CatchupSimulation::validateCatchup(Application::pointer app)
     auto& lm = app->getLedgerManager();
     auto nextLedger = lm.getLastClosedLedgerNum() + 1;
 
-    if (nextLedger < 4)
+    if (nextLedger < 3)
     {
         return;
     }
 
-    size_t i = nextLedger - 4;
+    size_t i = nextLedger - 3;
 
     auto root = TestAccount{*app, getRoot(mApp.getNetworkID())};
     auto alice = TestAccount{*app, getAccount("alice")};
@@ -989,58 +949,6 @@ CatchupSimulation::validateCatchup(Application::pointer app)
     CHECK(haveAliceSeq == wantAliceSeq);
     CHECK(haveBobSeq == wantBobSeq);
     CHECK(haveCarolSeq == wantCarolSeq);
-}
-
-CatchupMetrics
-CatchupSimulation::getCatchupMetrics(Application::pointer app)
-{
-    auto& getHistoryArchiveStateSuccess = app->getMetrics().NewMeter(
-        {"history", "download-history-archive-state", "success"}, "event");
-    auto historyArchiveStatesDownloaded = getHistoryArchiveStateSuccess.count();
-
-    // metric here is tracking checkpoints, not ledgers
-    auto& checkpointsDownloadSuccess = app->getMetrics().NewMeter(
-        {"history", "download-ledger", "success"}, "event");
-
-    auto checkpointsDownloaded = checkpointsDownloadSuccess.count();
-
-    auto& verifyLedgerSuccess = app->getMetrics().NewMeter(
-        {"history", "verify-ledger", "success"}, "event");
-    auto& verifyLedgerChainFailure = app->getMetrics().NewMeter(
-        {"history", "verify-ledger-chain", "failure"}, "event");
-
-    auto ledgersVerified = verifyLedgerSuccess.count();
-    auto ledgerChainsVerificationFailed = verifyLedgerChainFailure.count();
-
-    auto& downloadBucketSuccess = app->getMetrics().NewMeter(
-        {"history", "download-bucket", "success"}, "event");
-
-    auto bucketsDownloaded = downloadBucketSuccess.count();
-
-    auto& bucketApplySuccess = app->getMetrics().NewMeter(
-        {"history", "bucket-apply", "success"}, "event");
-
-    auto bucketsApplied = bucketApplySuccess.count();
-
-    // metric tracks transaction sets for each ledger
-    auto& downloadTxSetsSuccess = app->getMetrics().NewMeter(
-        {"history", "download-transactions", "success"}, "event");
-
-    auto txSetsDownloaded = downloadTxSetsSuccess.count();
-
-    auto& applyLedgerSuccess = app->getMetrics().NewMeter(
-        {"history", "apply-ledger-chain", "success"}, "event");
-
-    auto txSetsApplied = applyLedgerSuccess.count();
-
-    return CatchupMetrics{historyArchiveStatesDownloaded,
-                          checkpointsDownloaded,
-                          ledgersVerified,
-                          ledgerChainsVerificationFailed,
-                          bucketsDownloaded,
-                          bucketsApplied,
-                          txSetsDownloaded,
-                          txSetsApplied};
 }
 
 CatchupPerformedWork

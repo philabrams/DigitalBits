@@ -28,6 +28,8 @@ void shutdownWorkScheduler(Application& app);
 
 std::vector<Asset> getInvalidAssets(SecretKey const& issuer);
 
+int32_t computeMultiplier(LedgerEntry const& le);
+
 class BucketListDepthModifier
 {
     uint32_t const mPrevDepth;
@@ -72,12 +74,16 @@ template <typename T = TestApplication, typename... Args,
               std::is_base_of<TestApplication, T>::value>::type>
 std::shared_ptr<T>
 createTestApplication(VirtualClock& clock, Config const& cfg, Args&&... args,
-                      bool newDB = true)
+                      bool newDB = true, bool startApp = true)
 {
     Config c2(cfg);
     c2.adjust();
     auto app = Application::create<T, Args...>(
         clock, c2, std::forward<Args>(args)..., newDB);
+    if (startApp)
+    {
+        app->start();
+    }
     return app;
 }
 

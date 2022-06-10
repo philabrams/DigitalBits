@@ -13,6 +13,7 @@
 #include "ledger/LedgerManager.h"
 #include "ledger/test/LedgerTestUtils.h"
 #include "lib/catch.hpp"
+#include "lib/util/stdrandom.h"
 #include "main/Application.h"
 #include "medida/stats/snapshot.h"
 #include "overlay/DigitalBitsXDR.h"
@@ -104,7 +105,7 @@ TEST_CASE("3 nodes 2 running threshold 2", "[simulation][core3][acceptance]")
     LOG_DEBUG(DEFAULT_LOG, "done with core3 test");
 }
 
-TEST_CASE("assymetric topology report cost", "[simulation][!hide]")
+TEST_CASE("asymmetric topology report cost", "[simulation][!hide]")
 {
     // Ensure we close enough ledgers to start purging slots
     // (which is when cost gets reported)
@@ -112,7 +113,7 @@ TEST_CASE("assymetric topology report cost", "[simulation][!hide]")
 
     Hash networkID = sha256(getTestConfig().NETWORK_PASSPHRASE);
     Simulation::pointer simulation =
-        Topologies::assymetric(Simulation::OVER_LOOPBACK, networkID);
+        Topologies::asymmetric(Simulation::OVER_LOOPBACK, networkID);
     simulation->startAllNodes();
 
     simulation->crankUntil(
@@ -174,7 +175,7 @@ resilienceTest(Simulation::pointer sim)
 
     sim->startAllNodes();
 
-    std::uniform_int_distribution<size_t> gen(0, nbNodes - 1);
+    digitalbits::uniform_int_distribution<size_t> gen(0, nbNodes - 1);
 
     // bring network to a good place
     uint32 targetLedger = LedgerManager::GENESIS_LEDGER_SEQ + 1;
@@ -393,8 +394,9 @@ TEST_CASE(
     auto nodes = simulation->getNodes();
     auto& app = *nodes[0]; // pick a node to generate load
 
-    auto& lg = app.getLoadGenerator();
-    lg.generateLoad(true, 3, 0, 0, 10, 100, std::chrono::seconds(0), 0);
+    auto& loadGen = app.getLoadGenerator();
+    loadGen.generateLoad(LoadGenMode::CREATE, 3, 0, 0, 10, 100,
+                         std::chrono::seconds(0), 0);
     try
     {
         simulation->crankUntil(
@@ -403,21 +405,22 @@ TEST_CASE(
                 // to the second node in time and the second node gets the
                 // nomination
                 return simulation->haveAllExternalized(5, 2) &&
-                       lg.checkAccountSynced(app, true).empty();
+                       loadGen.checkAccountSynced(app, true).empty();
             },
             3 * Herder::EXP_LEDGER_TIMESPAN_SECONDS, false);
 
-        lg.generateLoad(false, 3, 0, 10, 10, 100, std::chrono::seconds(0), 0);
+        loadGen.generateLoad(LoadGenMode::PAY, 3, 0, 10, 10, 100,
+                             std::chrono::seconds(0), 0);
         simulation->crankUntil(
             [&]() {
                 return simulation->haveAllExternalized(8, 2) &&
-                       lg.checkAccountSynced(app, false).empty();
+                       loadGen.checkAccountSynced(app, false).empty();
             },
             2 * Herder::EXP_LEDGER_TIMESPAN_SECONDS, true);
     }
     catch (...)
     {
-        auto problems = lg.checkAccountSynced(app, false);
+        auto problems = loadGen.checkAccountSynced(app, false);
         REQUIRE(problems.empty());
     }
 
@@ -515,12 +518,13 @@ TEST_CASE("Accounts vs latency", "[scalability][!hide]")
     auto appPtr = newLoadTestApp(clock);
     auto& app = *appPtr;
 
-    auto& lg = app.getLoadGenerator();
+    auto& loadGen = app.getLoadGenerator();
     auto& txtime = app.getMetrics().NewTimer({"ledger", "operation", "apply"});
     uint32_t numItems = 500000;
 
     // Create accounts
-    lg.generateLoad(true, numItems, 0, 0, 10, 100, std::chrono::seconds(0), 0);
+    loadGen.generateLoad(LoadGenMode::CREATE, numItems, 0, 0, 10, 100,
+                         std::chrono::seconds(0), 0);
 
     auto& complete =
         appPtr->getMetrics().NewMeter({"loadgen", "run", "complete"}, "run");
@@ -535,8 +539,8 @@ TEST_CASE("Accounts vs latency", "[scalability][!hide]")
     txtime.Clear();
 
     // Generate payment txs
-    lg.generateLoad(false, numItems, 0, numItems / 10, 10, 100,
-                    std::chrono::seconds(0), 0);
+    loadGen.generateLoad(LoadGenMode::PAY, numItems, 0, numItems / 10, 10, 100,
+                         std::chrono::seconds(0), 0);
     while (!io.stopped() && complete.count() == 1)
     {
         clock.crank();
@@ -569,15 +573,16 @@ netTopologyTest(std::string const& name,
         assert(!nodes.empty());
         auto& app = *nodes[0];
 
-        auto& lg = app.getLoadGenerator();
-        lg.generateLoad(true, 50, 0, 0, 10, 100, std::chrono::seconds(0), 0);
+        auto& loadGen = app.getLoadGenerator();
+        loadGen.generateLoad(LoadGenMode::CREATE, 50, 0, 0, 10, 100,
+                             std::chrono::seconds(0), 0);
         auto& complete =
             app.getMetrics().NewMeter({"loadgen", "run", "complete"}, "run");
 
         sim->crankUntil(
             [&]() {
                 return sim->haveAllExternalized(8, 2) &&
-                       lg.checkAccountSynced(app, true).empty() &&
+                       loadGen.checkAccountSynced(app, true).empty() &&
                        complete.count() == 1;
             },
             2 * Herder::EXP_LEDGER_TIMESPAN_SECONDS, true);

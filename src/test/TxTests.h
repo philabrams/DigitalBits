@@ -7,7 +7,7 @@
 #include "crypto/SecretKey.h"
 #include "herder/LedgerCloseData.h"
 #include "overlay/DigitalBitsXDR.h"
-#include "util/optional.h"
+#include <optional>
 
 namespace digitalbits
 {
@@ -45,19 +45,28 @@ struct ValidationResult
 
 struct SetOptionsArguments
 {
-    optional<int> masterWeight;
-    optional<int> lowThreshold;
-    optional<int> medThreshold;
-    optional<int> highThreshold;
-    optional<Signer> signer;
-    optional<uint32_t> setFlags;
-    optional<uint32_t> clearFlags;
-    optional<AccountID> inflationDest;
-    optional<std::string> homeDomain;
+    std::optional<int> masterWeight;
+    std::optional<int> lowThreshold;
+    std::optional<int> medThreshold;
+    std::optional<int> highThreshold;
+    std::optional<Signer> signer;
+    std::optional<uint32_t> setFlags;
+    std::optional<uint32_t> clearFlags;
+    std::optional<AccountID> inflationDest;
+    std::optional<std::string> homeDomain;
 
     friend SetOptionsArguments operator|(SetOptionsArguments const& x,
                                          SetOptionsArguments const& y);
 };
+
+struct SetTrustLineFlagsArguments
+{
+    uint32_t setFlags = 0;
+    uint32_t clearFlags = 0;
+};
+
+SetTrustLineFlagsArguments operator|(SetTrustLineFlagsArguments const& x,
+                                     SetTrustLineFlagsArguments const& y);
 
 TransactionResult expectedResult(int64_t fee, size_t opsCount,
                                  TransactionResultCode code,
@@ -70,6 +79,11 @@ void applyTx(TransactionFramePtr const& tx, Application& app,
 void validateTxResults(TransactionFramePtr const& tx, Application& app,
                        ValidationResult validationResult,
                        TransactionResult const& applyResult = {});
+
+void checkLiquidityPool(Application& app, PoolID const& poolID,
+                        int64_t reserveA, int64_t reserveB,
+                        int64_t totalPoolShares,
+                        int64_t poolSharesTrustLineCount);
 
 TxSetResultMeta
 closeLedgerOn(Application& app, uint32 ledgerSeq, time_t closeTime,
@@ -110,6 +124,10 @@ TransactionFramePtr transactionFromOperations(Application& app,
                                               int fee = 0);
 
 Operation changeTrust(Asset const& asset, int64_t limit);
+Operation changeTrust(ChangeTrustAsset const& asset, int64_t limit);
+
+Operation allowTrust(PublicKey const& trustor, Asset const& asset,
+                     uint32_t authorize);
 
 Operation allowTrust(PublicKey const& trustor, Asset const& asset,
                      uint32_t authorize);
@@ -191,14 +209,33 @@ SetOptionsArguments clearFlags(uint32_t clearFlags);
 SetOptionsArguments setInflationDestination(AccountID inflationDest);
 SetOptionsArguments setHomeDomain(std::string const& homeDomain);
 
+Operation setTrustLineFlags(PublicKey const& trustor, Asset const& asset,
+                            SetTrustLineFlagsArguments const& arguments);
+
+SetTrustLineFlagsArguments setTrustLineFlags(uint32_t setFlags);
+SetTrustLineFlagsArguments clearTrustLineFlags(uint32_t clearFlags);
+
 Operation beginSponsoringFutureReserves(PublicKey const& sponsoredID);
 Operation endSponsoringFutureReserves();
 Operation revokeSponsorship(LedgerKey const& key);
 Operation revokeSponsorship(AccountID const& accID, SignerKey const& key);
 
+Operation clawback(AccountID const& from, Asset const& asset, int64_t amount);
+Operation clawbackClaimableBalance(ClaimableBalanceID const& balanceID);
+
+Operation liquidityPoolDeposit(PoolID const& poolID, int64_t maxAmountA,
+                               int64_t maxAmountB, Price const& minPrice,
+                               Price const& maxPrice);
+Operation liquidityPoolWithdraw(PoolID const& poolID, int64_t amount,
+                                int64_t minAmountA, int64_t minAmountB);
+
 Asset makeNativeAsset();
 Asset makeInvalidAsset();
 Asset makeAsset(SecretKey const& issuer, std::string const& code);
+Asset makeAssetAlphanum12(SecretKey const& issuer, std::string const& code);
+ChangeTrustAsset makeChangeTrustAssetPoolShare(Asset const& assetA,
+                                               Asset const& assetB,
+                                               int32_t fee);
 
 OperationFrame const& getFirstOperationFrame(TransactionFrame const& tx);
 OperationResult const& getFirstResult(TransactionFrame const& tx);
@@ -214,5 +251,19 @@ TransactionFrameBasePtr
 transactionFrameFromOps(Hash const& networkID, TestAccount& source,
                         std::vector<Operation> const& ops,
                         std::vector<SecretKey> const& opKeys);
+
+LedgerUpgrade makeBaseReserveUpgrade(int baseReserve);
+
+UpgradeType toUpgradeType(LedgerUpgrade const& upgrade);
+
+LedgerHeader executeUpgrades(Application& app,
+                             xdr::xvector<UpgradeType, 6> const& upgrades);
+
+LedgerHeader executeUpgrade(Application& app, LedgerUpgrade const& lupgrade);
+
+void
+depositTradeWithdrawTest(Application& app, TestAccount& root, int depositSize,
+                         std::vector<std::pair<bool, int64_t>> const& trades);
+
 } // end txtest namespace
 }

@@ -1,11 +1,13 @@
-#pragma once
-
 // Copyright 2019 DigitalBits Development Foundation and contributors. Licensed
 // under the Apache License, Version 2.0. See the COPYING file at the root
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "FileSystemException.h"
 #include <fmt/format.h>
+
+#ifdef _WIN32
+#include <Windows.h>
+#endif
 
 namespace digitalbits
 {
@@ -25,7 +27,7 @@ FileSystemException::getLastErrorString()
                                     FORMAT_MESSAGE_IGNORE_INSERTS,
                                 NULL, dw, 0, (LPTSTR)buf, bufSize, NULL);
     buf[sz] = 0;
-    res = fmt::format("Error {:#X} - {}", dw, buf);
+    res = fmt::format(FMT_STRING("Error {:#X} - {}"), dw, buf);
     return res;
 }
 

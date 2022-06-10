@@ -156,15 +156,6 @@ HistoryManagerImpl::localFilename(std::string const& basename)
     return this->getTmpDir() + "/" + basename;
 }
 
-InferredQuorum
-HistoryManagerImpl::inferQuorum(uint32_t ledgerNum)
-{
-    InferredQuorum iq;
-    CLOG_INFO(History, "Starting FetchRecentQsetsWork");
-    mApp.getWorkScheduler().executeWork<FetchRecentQsetsWork>(iq, ledgerNum);
-    return iq;
-}
-
 uint32_t
 HistoryManagerImpl::getMinLedgerQueuedToPublish()
 {
@@ -235,14 +226,16 @@ HistoryManagerImpl::queueCurrentHistory()
     mEnqueueTimes.emplace(ledger, std::chrono::steady_clock::now());
 
     auto state = has.toString();
-    auto timer = mApp.getDatabase().getInsertTimer("publishqueue");
     auto prep = mApp.getDatabase().getPreparedStatement(
         "INSERT INTO publishqueue (ledger, state) VALUES (:lg, :st);");
     auto& st = prep.statement();
     st.exchange(soci::use(ledger));
     st.exchange(soci::use(state));
     st.define_and_bind();
-    st.execute(true);
+    {
+        ZoneNamedN(insertPublishQueueZone, "insert publishqueue", true);
+        st.execute(true);
+    }
 
     // We have now written the current HAS to the database, so
     // it's "safe" to crash (at least after the enclosing tx commits);
@@ -269,7 +262,7 @@ HistoryManagerImpl::takeSnapshotAndPublish(HistoryArchiveState const& has)
     // pristine state as returned by the database.
     for (auto const& bucket : has.currentBuckets)
     {
-        assert(!bucket.next.isLive());
+        releaseAssert(!bucket.next.isLive());
     }
     auto allBucketsFromHAS = has.allBuckets();
     auto ledgerSeq = has.currentLedger;
@@ -298,6 +291,11 @@ HistoryManagerImpl::takeSnapshotAndPublish(HistoryArchiveState const& has)
 size_t
 HistoryManagerImpl::publishQueuedHistory()
 {
+    if (mApp.isStopping())
+    {
+        return 0;
+    }
+
 #ifdef BUILD_TESTS
     if (!mPublicationEnabled)
     {
@@ -421,13 +419,15 @@ HistoryManagerImpl::historyPublished(
         }
 
         this->mPublishSuccess.Mark();
-        auto timer = mApp.getDatabase().getDeleteTimer("publishqueue");
         auto prep = mApp.getDatabase().getPreparedStatement(
             "DELETE FROM publishqueue WHERE ledger = :lg;");
         auto& st = prep.statement();
         st.exchange(soci::use(ledgerSeq));
         st.define_and_bind();
-        st.execute(true);
+        {
+            ZoneNamedN(deletePublishQueueZone, "delete publishqueue", true);
+            st.execute(true);
+        }
 
         mPublishQueueBuckets.removeBuckets(originalBuckets);
     }
@@ -438,6 +438,18 @@ HistoryManagerImpl::historyPublished(
     mPublishWork.reset();
     mApp.postOnMainThread([this]() { this->publishQueuedHistory(); },
                           "HistoryManagerImpl: publishQueuedHistory");
+}
+
+void
+HistoryManagerImpl::deleteCheckpointsNewerThan(uint32_t ledgerSeq)
+{
+    ZoneScoped;
+    auto prep = mApp.getDatabase().getPreparedStatement(
+        "DELETE FROM publishqueue WHERE ledger >= :lg;");
+    auto& st = prep.statement();
+    st.exchange(soci::use(ledgerSeq));
+    st.define_and_bind();
+    st.execute(true);
 }
 
 uint64_t

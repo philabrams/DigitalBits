@@ -19,6 +19,7 @@
 #include "transactions/InflationOpFrame.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/Timer.h"
 #include "util/XDROperators.h"
 #include <functional>
@@ -127,7 +128,7 @@ simulateInflation(int ledgerVersion, int nbAccounts, int64& totCoins,
 
     // 1% annual inflation on a weekly basis
     // 0.000190721
-    auto inflation = bigDivide(totCoins, 190721, 1000000000, ROUND_DOWN);
+    auto inflation = bigDivideOrThrow(totCoins, 190721, 1000000000, ROUND_DOWN);
     auto coinsToDole = inflation + totFees;
     int64 leftToDole = coinsToDole;
 
@@ -135,8 +136,8 @@ simulateInflation(int ledgerVersion, int nbAccounts, int64& totCoins,
     {
         // computes the share of this guy
         int64 toDoleToThis =
-            bigDivide(coinsToDole, votes.at(w), totVotes, ROUND_DOWN);
-        if (ledgerVersion >= 10)
+            bigDivideOrThrow(coinsToDole, votes.at(w), totVotes, ROUND_DOWN);
+        if (protocolVersionStartsFrom(ledgerVersion, ProtocolVersion::V_10))
         {
             LedgerTxn ltx(app.getLedgerTxnRoot());
             auto header = ltx.loadHeader();
@@ -148,7 +149,7 @@ simulateInflation(int ledgerVersion, int nbAccounts, int64& totCoins,
         if (balances[w] >= 0)
         {
             balances[w] += toDoleToThis;
-            if (ledgerVersion <= 7)
+            if (protocolVersionIsBefore(ledgerVersion, ProtocolVersion::V_8))
             {
                 totCoins += toDoleToThis;
             }
@@ -156,7 +157,7 @@ simulateInflation(int ledgerVersion, int nbAccounts, int64& totCoins,
         }
     }
 
-    if (ledgerVersion > 7)
+    if (protocolVersionStartsFrom(ledgerVersion, ProtocolVersion::V_8))
     {
         totCoins += inflation;
     }
@@ -173,7 +174,7 @@ simulateInflation(int ledgerVersion, int nbAccounts, int64& totCoins,
 static void
 doInflation(Application& app, int ledgerVersion, int nbAccounts,
             std::function<int64(int)> getBalance,
-            std::function<int(int)> getVote, int expectedWinnerCount)
+            std::function<int(int)> getVote, size_t expectedWinnerCount)
 {
     auto getFeePool = [&] {
         LedgerTxn ltx(app.getLedgerTxnRoot());
@@ -240,7 +241,7 @@ doInflation(Application& app, int ledgerVersion, int nbAccounts,
     InflationResult const& infResult =
         getFirstResult(*txFrame).tr().inflationResult();
     auto const& payouts = infResult.payouts();
-    int actualChanges = 0;
+    size_t actualChanges = 0;
 
     for (int i = 0; i < nbAccounts; i++)
     {
@@ -319,8 +320,6 @@ TEST_CASE("inflation", "[tx][inflation]")
         return ltx.loadHeader().current().totalCoins;
     };
 
-    app->start();
-
     SECTION("not time")
     {
         for_versions_to(11, *app, [&] {
@@ -360,7 +359,7 @@ TEST_CASE("inflation", "[tx][inflation]")
     SECTION("total coins")
     {
         REQUIRE(getFeePool() == 0);
-        REQUIRE(getTotalCoins() == 200000000000000000);
+        REQUIRE(getTotalCoins() == 1000000000000000000);
 
         auto voter1 = TestAccount{*app, getAccount("voter1"), 0};
         auto voter2 = TestAccount{*app, getAccount("voter2"), 0};
@@ -378,22 +377,22 @@ TEST_CASE("inflation", "[tx][inflation]")
         auto target1tx = root.tx({createAccount(target1, minBalance)});
         auto target2tx = root.tx({createAccount(target2, minBalance)});
 
-        closeLedgerOn(*app, 3, 21, 7, 2014,
+        closeLedgerOn(*app, 2, 21, 7, 2014,
                       {voter1tx, voter2tx, target1tx, target2tx});
 
         REQUIRE(getFeePool() == 1000000299);
-        REQUIRE(getTotalCoins() == 200000000000000000);
+        REQUIRE(getTotalCoins() == 1000000000000000000);
 
         auto setInflationDestination1 = voter1.tx(
             {setOptions(setInflationDestination(target1.getPublicKey()))});
         auto setInflationDestination2 = voter2.tx(
             {setOptions(setInflationDestination(target2.getPublicKey()))});
 
-        closeLedgerOn(*app, 4, 21, 7, 2014,
+        closeLedgerOn(*app, 3, 21, 7, 2014,
                       {setInflationDestination1, setInflationDestination2});
 
         REQUIRE(getFeePool() == 1000000499);
-        REQUIRE(getTotalCoins() == 200000000000000000);
+        REQUIRE(getTotalCoins() == 1000000000000000000);
 
         auto beforeInflationRoot = root.getBalance();
         auto beforeInflationVoter1 = voter1.getBalance();
@@ -465,7 +464,8 @@ TEST_CASE("inflation", "[tx][inflation]")
     // minVote to participate in inflation
     const int64 minVote = 1000000000LL;
     // .05% of all coins
-    const int64 winnerVote = bigDivide(getTotalCoins(), 5, 10000, ROUND_DOWN);
+    const int64 winnerVote =
+        bigDivideOrThrow(getTotalCoins(), 5, 10000, ROUND_DOWN);
 
     SECTION("inflation scenarios")
     {
@@ -473,7 +473,7 @@ TEST_CASE("inflation", "[tx][inflation]")
             std::function<int(int)> voteFunc;
             std::function<int64(int)> balanceFunc;
             int nbAccounts = 0;
-            int expectedWinners = 0;
+            size_t expectedWinners = 0;
 
             auto verify = [&]() {
                 if (nbAccounts != 0)
@@ -540,7 +540,8 @@ TEST_CASE("inflation", "[tx][inflation]")
                 const int midPoint = nbAccounts / 2;
 
                 const int64 each =
-                    bigDivide(winnerVote, 2, nbAccounts, ROUND_DOWN) + minVote;
+                    bigDivideOrThrow(winnerVote, 2, nbAccounts, ROUND_DOWN) +
+                    minVote;
 
                 voteFunc = [&](int n) { return (n < midPoint) ? 0 : 1; };
                 balanceFunc = [&](int n) { return each; };
@@ -561,7 +562,8 @@ TEST_CASE("inflation", "[tx][inflation]")
                 const int midPoint = nbAccounts / 2;
 
                 const int64 each =
-                    bigDivide(winnerVote, 2, nbAccounts, ROUND_DOWN) + minVote;
+                    bigDivideOrThrow(winnerVote, 2, nbAccounts, ROUND_DOWN) +
+                    minVote;
 
                 voteFunc = [&](int n) { return (n < midPoint) ? 0 : 1; };
                 balanceFunc = [&](int n) {
@@ -596,13 +598,13 @@ TEST_CASE("inflation", "[tx][inflation]")
 
             closeLedgerOn(*app, 2, 21, 7, 2014);
 
-            int expectedWinners = (expectedPayout > 0);
+            size_t expectedWinners = (expectedPayout > 0);
             doInflation(*app, getLedgerVersion(), 2, balanceFunc, voteFunc,
                         expectedWinners);
         };
 
         int64_t maxPayout =
-            bigDivide(getTotalCoins(), 190721, 1000000000, ROUND_DOWN) +
+            bigDivideOrThrow(getTotalCoins(), 190721, 1000000000, ROUND_DOWN) +
             getFeePool();
 
         SECTION("no available balance")

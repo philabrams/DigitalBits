@@ -5,7 +5,6 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "xdr/DigitalBits-ledger-entries.h"
-#include "xdr/DigitalBits-types.h"
 
 namespace digitalbits
 {

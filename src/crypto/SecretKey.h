@@ -58,6 +58,11 @@ class SecretKey
     // Create a new, random secret key.
     static SecretKey random();
 
+    // Measure the speed of sign-and-verify ops.
+    static void benchmarkOpsPerSecond(size_t& sign, size_t& verify,
+                                      size_t iterations,
+                                      size_t cachedVerifyPasses = 1);
+
 #ifdef BUILD_TESTS
     // Create a new, pseudo-random secret key drawn from the global weak
     // non-cryptographic PRNG (which itself is seeded from command-line or
@@ -133,6 +138,9 @@ void clearVerifySigCache();
 void flushVerifySigCacheCounts(uint64_t& hits, uint64_t& misses);
 
 PublicKey random();
+#ifdef BUILD_TESTS
+PublicKey pseudoRandomForTesting();
+#endif
 }
 
 namespace StrKeyUtils
@@ -145,6 +153,9 @@ void logKey(std::ostream& s, std::string const& key);
 namespace HashUtils
 {
 Hash random();
+#ifdef BUILD_TESTS
+Hash pseudoRandomForTesting();
+#endif
 }
 }
 

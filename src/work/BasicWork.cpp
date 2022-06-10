@@ -3,6 +3,7 @@
 // of this distribution or at http://www.apache.org/licenses/LICENSE-2.0
 
 #include "work/BasicWork.h"
+#include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/Math.h"
 #include <Tracy.hpp>
@@ -43,7 +44,17 @@ BasicWork::BasicWork(Application& app, std::string name, size_t maxRetries)
 BasicWork::~BasicWork()
 {
     // Work completed or has not started yet
-    assert(isDone() || mState == InternalState::PENDING);
+    releaseAssert(isDone() || mState == InternalState::PENDING || isAborting());
+}
+
+void
+BasicWork::resetWaitingTimer()
+{
+    if (mWaitingTimer)
+    {
+        mWaitingTimer->cancel();
+        mWaitingTimer.reset();
+    }
 }
 
 void
@@ -52,6 +63,9 @@ BasicWork::shutdown()
     CLOG_TRACE(Work, "Shutting down: {}", getName());
     if (!isDone())
     {
+        // We're transitioning into "ABORTING" state, so cancel
+        // the waiting timer
+        resetWaitingTimer();
         setState(InternalState::ABORTING);
     }
 }
@@ -71,24 +85,25 @@ BasicWork::getStatus() const
     switch (state)
     {
     case InternalState::PENDING:
-        return fmt::format("Ready to run: {:s}", getName());
+        return fmt::format(FMT_STRING("Ready to run: {}"), getName());
     case InternalState::RUNNING:
-        return fmt::format("Running: {:s}", getName());
+        return fmt::format(FMT_STRING("Running: {}"), getName());
     case InternalState::WAITING:
-        return fmt::format("Waiting: {:s}", getName());
+        return fmt::format(FMT_STRING("Waiting: {}"), getName());
     case InternalState::SUCCESS:
-        return fmt::format("Succeeded: {:s}", getName());
+        return fmt::format(FMT_STRING("Succeeded: {}"), getName());
     case InternalState::RETRYING:
     {
         auto eta = getRetryETA();
-        return fmt::format("Retrying in {:d} sec: {:s}", eta, getName());
+        return fmt::format(FMT_STRING("Retrying in {:d} sec: {}"), eta,
+                           getName());
     }
     case InternalState::FAILURE:
-        return fmt::format("Failed: {:s}", getName());
+        return fmt::format(FMT_STRING("Failed: {}"), getName());
     case InternalState::ABORTING:
-        return fmt::format("Aborting: {:s}", getName());
+        return fmt::format(FMT_STRING("Aborting: {}"), getName());
     case InternalState::ABORTED:
-        return fmt::format("Aborted: {:s}", getName());
+        return fmt::format(FMT_STRING("Aborted: {}"), getName());
     default:
         abort();
     }
@@ -154,7 +169,7 @@ BasicWork::startWork(std::function<void()> notificationCallback)
 
     mNotifyCallback = notificationCallback;
     setState(InternalState::RUNNING);
-    assert(mRetries == 0);
+    releaseAssert(mRetries == 0);
 }
 
 void
@@ -162,8 +177,8 @@ BasicWork::waitForRetry()
 {
     if (mRetryTimer)
     {
-        throw std::runtime_error(
-            fmt::format("Retry timer for {} already exists!", getName()));
+        throw std::runtime_error(fmt::format(
+            FMT_STRING("Retry timer for {} already exists!"), getName()));
     }
 
     mRetryTimer = std::make_unique<VirtualTimer>(mApp.getClock());
@@ -181,9 +196,9 @@ BasicWork::waitForRetry()
         {
             return;
         }
-        assert(self->mState == InternalState::WAITING ||
-               self->mState == InternalState::ABORTED ||
-               self->mState == InternalState::ABORTING);
+        releaseAssert(self->mState == InternalState::WAITING ||
+                      self->mState == InternalState::ABORTED ||
+                      self->mState == InternalState::ABORTING);
         if (self->mState == InternalState::WAITING)
         {
             self->mRetries++;
@@ -299,6 +314,9 @@ BasicWork::wakeUp(std::function<void()> innerCallback)
     CLOG_TRACE(Work, "Waking up: {}", getName());
     setState(InternalState::RUNNING);
 
+    // If we woke up because of the waiting timer firing, reset it
+    resetWaitingTimer();
+
     if (innerCallback)
     {
         CLOG_TRACE(Work, "{} woke up and is executing its callback", getName());
@@ -328,10 +346,32 @@ BasicWork::wakeSelfUpCallback(std::function<void()> innerCallback)
 }
 
 void
+BasicWork::setupWaitingCallback(std::chrono::milliseconds wakeUpIn)
+{
+    // Work must be running to schedule a timer
+    releaseAssert(mState == BasicWork::InternalState::RUNNING);
+
+    // No-op if timer is already set
+    if (mWaitingTimer)
+    {
+        CLOG_WARNING(Work, "{}: waiting timer is already set (no-op)",
+                     getName());
+        return;
+    }
+
+    // Otherwise, setup the timer that no-ops on failure (if work is shutdown or
+    // destroyed, for example)
+    mWaitingTimer = std::make_unique<VirtualTimer>(mApp.getClock());
+    mWaitingTimer->expires_from_now(wakeUpIn);
+    mWaitingTimer->async_wait(wakeSelfUpCallback(),
+                              &VirtualTimer::onFailureNoop);
+}
+
+void
 BasicWork::crankWork()
 {
     ZoneScoped;
-    assert(!isDone() && mState != InternalState::WAITING);
+    releaseAssert(!isDone() && mState != InternalState::WAITING);
 
     InternalState nextState;
     if (mState == InternalState::ABORTING)
@@ -353,8 +393,9 @@ VirtualClock::duration
 BasicWork::getRetryDelay() const
 {
     // Cap to 512 sec or ~8 minutes
-    uint64_t m = 2ULL << std::min(uint64_t(8), uint64_t(mRetries));
-    return std::chrono::seconds(rand_uniform<uint64_t>(1ULL, m));
+    uint64_t upperBound = 1ULL << std::min(uint64_t(9), uint64_t(mRetries));
+    uint64_t lowerBound = upperBound < 2 ? uint64_t(1) : (upperBound / 2 + 1);
+    return std::chrono::seconds(rand_uniform<uint64_t>(lowerBound, upperBound));
 }
 
 uint64_t
@@ -379,9 +420,9 @@ BasicWork::assertValidTransition(Transition const& t) const
 {
     if (ALLOWED_TRANSITIONS.find(t) == ALLOWED_TRANSITIONS.end())
     {
-        throw std::runtime_error(
-            fmt::format("BasicWork error: illegal state transition {} -> {}",
-                        stateName(t.first), stateName(t.second)));
+        throw std::runtime_error(fmt::format(
+            FMT_STRING("BasicWork error: illegal state transition {} -> {}"),
+            stateName(t.first), stateName(t.second)));
     }
 }
 

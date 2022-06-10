@@ -8,6 +8,7 @@
 #include "crypto/Random.h"
 #include "crypto/SHA.h"
 #include "database/Database.h"
+#include "herder/SurgePricingUtils.h"
 #include "ledger/LedgerManager.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
@@ -17,9 +18,11 @@
 #include "transactions/TransactionUtils.h"
 #include "util/GlobalChecks.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/XDRCereal.h"
 #include "util/XDROperators.h"
 #include "xdrpp/marshal.h"
+
 #include <Tracy.hpp>
 #include <algorithm>
 #include <list>
@@ -31,12 +34,14 @@ namespace digitalbits
 using namespace std;
 
 TxSetFrame::TxSetFrame(Hash const& previousLedgerHash)
-    : mHash(nullptr), mValid(nullptr), mPreviousLedgerHash(previousLedgerHash)
+    : mHash(std::nullopt)
+    , mValid(std::nullopt)
+    , mPreviousLedgerHash(previousLedgerHash)
 {
 }
 
 TxSetFrame::TxSetFrame(Hash const& networkID, TransactionSet const& xdrSet)
-    : mHash(nullptr), mValid(nullptr)
+    : mHash(std::nullopt), mValid(std::nullopt)
 {
     ZoneScoped;
     for (auto const& env : xdrSet.txs)
@@ -175,30 +180,11 @@ struct SurgeCompare
         auto& top1 = tx1->front();
         auto& top2 = tx2->front();
 
-        // compare fee/numOps between top1 and top2
-        // getNumOperations >= 1 because SurgeCompare can only be used on
-        // valid transactions
-        //
-        // Let f1, f2 be the two fee bids, and let n1, n2 be the two
-        // operation counts. We want to calculate the boolean comparison
-        // "f1 / n1 < f2 / n2" but, since these are uint128s, we want to
-        // avoid the truncating division or use of floating point.
-        //
-        // Therefore we multiply both sides by n1 * n2, and cancel:
-        //
-        //               f1 / n1 < f2 / n2
-        //  == f1 * n1 * n2 / n1 < f2 * n1 * n2 / n2
-        //  == f1 *      n2      < f2 * n1
+        auto cmp3 = feeRate3WayCompare(top1, top2);
 
-        auto v1 = bigMultiply(top1->getFeeBid(), top2->getNumOperations());
-        auto v2 = bigMultiply(top2->getFeeBid(), top1->getNumOperations());
-        if (v1 < v2)
+        if (cmp3 != 0)
         {
-            return true;
-        }
-        else if (v1 > v2)
-        {
-            return false;
+            return cmp3 < 0;
         }
         // use hash of transaction as a tie breaker
         return lessThanXored(top1->getFullHash(), top2->getFullHash(), mSeed);
@@ -238,7 +224,8 @@ TxSetFrame::surgePricingFilter(Application& app)
     LedgerTxn ltx(app.getLedgerTxnRoot());
     auto header = ltx.loadHeader();
 
-    bool maxIsOps = header.current().ledgerVersion >= 11;
+    bool maxIsOps = protocolVersionStartsFrom(header.current().ledgerVersion,
+                                              ProtocolVersion::V_11);
 
     size_t opsLeft = app.getLedgerManager().getLastMaxTxSetSizeOps();
 
@@ -315,12 +302,13 @@ TxSetFrame::checkOrTrim(Application& app,
             {
                 if (justCheck)
                 {
-                    CLOG_DEBUG(Herder,
-                               "Got bad txSet: {} tx invalid lastSeq:{} tx: {} "
-                               "result: {}",
-                               hexAbbrev(mPreviousLedgerHash), lastSeq,
-                               xdr_to_string(tx->getEnvelope()),
-                               tx->getResultCode());
+                    CLOG_DEBUG(
+                        Herder,
+                        "Got bad txSet: {} tx invalid lastSeq:{} tx: {} "
+                        "result: {}",
+                        hexAbbrev(mPreviousLedgerHash), lastSeq,
+                        xdr_to_string(tx->getEnvelope(), "TransactionEnvelope"),
+                        tx->getResultCode());
                     return false;
                 }
                 trimmed.emplace_back(tx);
@@ -360,7 +348,8 @@ TxSetFrame::checkOrTrim(Application& app,
                     CLOG_DEBUG(Herder,
                                "Got bad txSet: {} account can't pay fee tx: {}",
                                hexAbbrev(mPreviousLedgerHash),
-                               xdr_to_string(tx->getEnvelope()));
+                               xdr_to_string(tx->getEnvelope(),
+                                             "TransactionEnvelope"));
                     return false;
                 }
                 while (iter != kv.second.end())
@@ -410,7 +399,7 @@ TxSetFrame::checkValid(Application& app, uint64_t lowerBoundCloseTimeOffset,
     {
         CLOG_DEBUG(Herder, "Got bad txSet: {}, expected {}",
                    hexAbbrev(mPreviousLedgerHash), hexAbbrev(lcl.hash));
-        mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
+        mValid = std::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
         return false;
     }
 
@@ -418,7 +407,7 @@ TxSetFrame::checkValid(Application& app, uint64_t lowerBoundCloseTimeOffset,
     {
         CLOG_DEBUG(Herder, "Got bad txSet: too many txs {} > {}",
                    this->size(lcl.header), lcl.header.maxTxSetSize);
-        mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
+        mValid = std::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
         return false;
     }
 
@@ -429,14 +418,14 @@ TxSetFrame::checkValid(Application& app, uint64_t lowerBoundCloseTimeOffset,
     {
         CLOG_DEBUG(Herder, "Got bad txSet: {} not sorted correctly",
                    hexAbbrev(mPreviousLedgerHash));
-        mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
+        mValid = std::make_optional<std::pair<Hash, bool>>(lcl.hash, false);
         return false;
     }
 
     std::vector<TransactionFrameBasePtr> trimmed;
     bool valid = checkOrTrim(app, trimmed, true, lowerBoundCloseTimeOffset,
                              upperBoundCloseTimeOffset);
-    mValid = digitalbits::make_optional<std::pair<Hash, bool>>(lcl.hash, valid);
+    mValid = std::make_optional<std::pair<Hash, bool>>(lcl.hash, valid);
     return valid;
 }
 
@@ -463,7 +452,7 @@ TxSetFrame::getContentsHash()
         {
             hasher.add(xdr::xdr_to_opaque(mTransactions[n]->getEnvelope()));
         }
-        mHash = digitalbits::make_optional<Hash>(hasher.finish());
+        mHash = std::make_optional<Hash>(hasher.finish());
     }
     return *mHash;
 }
@@ -487,7 +476,9 @@ TxSetFrame::previousLedgerHash() const
 size_t
 TxSetFrame::size(LedgerHeader const& lh) const
 {
-    return lh.ledgerVersion >= 11 ? sizeOp() : sizeTx();
+    return protocolVersionStartsFrom(lh.ledgerVersion, ProtocolVersion::V_11)
+               ? sizeOp()
+               : sizeTx();
 }
 
 size_t
@@ -505,7 +496,7 @@ int64_t
 TxSetFrame::getBaseFee(LedgerHeader const& lh) const
 {
     int64_t baseFee = lh.baseFee;
-    if (lh.ledgerVersion >= 11)
+    if (protocolVersionStartsFrom(lh.ledgerVersion, ProtocolVersion::V_11))
     {
         size_t ops = 0;
         int64_t lowBaseFee = std::numeric_limits<int64_t>::max();
@@ -513,9 +504,9 @@ TxSetFrame::getBaseFee(LedgerHeader const& lh) const
         {
             auto txOps = txPtr->getNumOperations();
             ops += txOps;
-            int64_t txBaseFee =
-                bigDivide(txPtr->getFeeBid(), 1, static_cast<int64_t>(txOps),
-                          Rounding::ROUND_UP);
+            int64_t txBaseFee = bigDivideOrThrow(txPtr->getFeeBid(), 1,
+                                                 static_cast<int64_t>(txOps),
+                                                 Rounding::ROUND_UP);
             lowBaseFee = std::min(lowBaseFee, txBaseFee);
         }
         // if surge pricing was in action, use the lowest base fee bid from the
@@ -558,4 +549,5 @@ TxSetFrame::toXDR(TransactionSet& txSet)
     }
     txSet.previousLedgerHash = mPreviousLedgerHash;
 }
+
 } // namespace digitalbits

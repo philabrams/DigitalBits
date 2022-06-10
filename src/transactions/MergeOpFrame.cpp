@@ -11,6 +11,7 @@
 #include "transactions/SponsorshipUtils.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/XDROperators.h"
 #include <Tracy.hpp>
 
@@ -50,6 +51,21 @@ bool
 MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
 {
     ZoneNamedN(applyZone, "MergeOp apply", true);
+
+    if (protocolVersionIsBefore(ltx.loadHeader().current().ledgerVersion,
+                                ProtocolVersion::V_16))
+    {
+        return doApplyBeforeV16(ltx);
+    }
+    else
+    {
+        return doApplyFromV16(ltx);
+    }
+}
+
+bool
+MergeOpFrame::doApplyBeforeV16(AbstractLedgerTxn& ltx)
+{
     auto header = ltx.loadHeader();
 
     auto otherAccount =
@@ -61,8 +77,10 @@ MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
     }
 
     int64_t sourceBalance = 0;
-    if (header.current().ledgerVersion > 4 &&
-        header.current().ledgerVersion < 8)
+    if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                  ProtocolVersion::V_5) &&
+        protocolVersionIsBefore(header.current().ledgerVersion,
+                                ProtocolVersion::V_8))
     {
         // in versions < 8, merge account could be called with a stale account
         LedgerKey key(ACCOUNT);
@@ -74,7 +92,8 @@ MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
             return false;
         }
 
-        if (header.current().ledgerVersion > 5)
+        if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                      ProtocolVersion::V_6))
         {
             sourceBalance = thisAccount.current().data.account().balance;
         }
@@ -83,8 +102,10 @@ MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
     auto sourceAccountEntry = loadSourceAccount(ltx, header);
     auto const& sourceAccount = sourceAccountEntry.current().data.account();
     // Only set sourceBalance here if it wasn't set in the previous block
-    if (header.current().ledgerVersion <= 5 ||
-        header.current().ledgerVersion >= 8)
+    if (protocolVersionIsBefore(header.current().ledgerVersion,
+                                ProtocolVersion::V_6) ||
+        protocolVersionStartsFrom(header.current().ledgerVersion,
+                                  ProtocolVersion::V_8))
     {
         sourceBalance = sourceAccount.balance;
     }
@@ -101,7 +122,8 @@ MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
         return false;
     }
 
-    if (header.current().ledgerVersion >= 10)
+    if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                  ProtocolVersion::V_10))
     {
         if (isSeqnumTooFar(header, sourceAccount))
         {
@@ -110,7 +132,8 @@ MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
         }
     }
 
-    if (header.current().ledgerVersion >= 14)
+    if (protocolVersionStartsFrom(header.current().ledgerVersion,
+                                  ProtocolVersion::V_14))
     {
         if (loadSponsorshipCounter(ltx, getSourceID()))
         {
@@ -137,6 +160,81 @@ MergeOpFrame::doApply(AbstractLedgerTxn& ltx)
     {
         innerResult().code(ACCOUNT_MERGE_DEST_FULL);
         return false;
+    }
+
+    removeEntryWithPossibleSponsorship(
+        ltx, header, sourceAccountEntry.current(), sourceAccountEntry);
+    sourceAccountEntry.erase();
+
+    innerResult().code(ACCOUNT_MERGE_SUCCESS);
+    innerResult().sourceAccountBalance() = sourceBalance;
+    return true;
+}
+
+bool
+MergeOpFrame::doApplyFromV16(AbstractLedgerTxn& ltx)
+{
+    auto header = ltx.loadHeader();
+
+    if (!digitalbits::loadAccount(ltx, toAccountID(mOperation.body.destination())))
+    {
+        innerResult().code(ACCOUNT_MERGE_NO_ACCOUNT);
+        return false;
+    }
+
+    auto sourceAccountEntry = loadSourceAccount(ltx, header);
+
+    if (isImmutableAuth(sourceAccountEntry))
+    {
+        innerResult().code(ACCOUNT_MERGE_IMMUTABLE_SET);
+        return false;
+    }
+
+    // use a lambda so we don't hold a reference to the AccountEntry
+    auto sourceAccount = [&]() -> AccountEntry const& {
+        return sourceAccountEntry.current().data.account();
+    };
+
+    if (sourceAccount().numSubEntries != sourceAccount().signers.size())
+    {
+        innerResult().code(ACCOUNT_MERGE_HAS_SUB_ENTRIES);
+        return false;
+    }
+
+    if (isSeqnumTooFar(header, sourceAccount()))
+    {
+        innerResult().code(ACCOUNT_MERGE_SEQNUM_TOO_FAR);
+        return false;
+    }
+
+    if (loadSponsorshipCounter(ltx, getSourceID()))
+    {
+        innerResult().code(ACCOUNT_MERGE_IS_SPONSOR);
+        return false;
+    }
+
+    if (getNumSponsoring(sourceAccountEntry.current()) > 0)
+    {
+        innerResult().code(ACCOUNT_MERGE_IS_SPONSOR);
+        return false;
+    }
+
+    while (!sourceAccount().signers.empty())
+    {
+        removeSignerWithPossibleSponsorship(
+            ltx, header, sourceAccount().signers.end() - 1, sourceAccountEntry);
+    }
+
+    // "success" path starts
+    auto sourceBalance = sourceAccount().balance;
+    {
+        auto otherAccount = digitalbits::loadAccount(
+            ltx, toAccountID(mOperation.body.destination()));
+        if (!addBalance(header, otherAccount, sourceBalance))
+        {
+            innerResult().code(ACCOUNT_MERGE_DEST_FULL);
+            return false;
+        }
     }
 
     removeEntryWithPossibleSponsorship(

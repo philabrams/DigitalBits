@@ -21,15 +21,16 @@ digitalbits_core_LDADD = $(soci_LIBS) $(libmedida_LIBS)		\
 TESTDATA_DIR = testdata
 TEST_FILES = $(TESTDATA_DIR)/digitalbits-core_example.cfg $(TESTDATA_DIR)/digitalbits-core_standalone.cfg \
              $(TESTDATA_DIR)/digitalbits-core_testnet.cfg $(TESTDATA_DIR)/digitalbits-core_testnet_legacy.cfg \
-	     $(TESTDATA_DIR)/digitalbits-history.testnet.6714239.json $(TESTDATA_DIR)/digitalbits-history.livenet.15686975.json $(TESTDATA_DIR)/digitalbits-core_example_validators.cfg \
-	     $(TESTDATA_DIR)/digitalbits-history.testnet.6714239.networkPassphrase.json
+             $(TESTDATA_DIR)/digitalbits-history.testnet.6714239.json $(TESTDATA_DIR)/digitalbits-history.livenet.15686975.json \
+             $(TESTDATA_DIR)/digitalbits-core_testnet_validator.cfg $(TESTDATA_DIR)/digitalbits-core_example_validators.cfg \
+             $(TESTDATA_DIR)/digitalbits-history.testnet.6714239.networkPassphrase.json
 
 BUILT_SOURCES = $(SRC_X_FILES:.x=.h) main/DigitalBitsCoreVersion.cpp $(TEST_FILES)
 
 $(SRC_X_FILES:.x=.h): $(XDRC)
 SUFFIXES = .x .h
 .x.h:
-	$(XDRC) -hh -o $@ $<
+	$(XDRC) -hh -pedantic -o $@ $<
 
 $(srcdir)/src.mk: $(top_srcdir)/make-mks
 	cd $(top_srcdir) && ./make-mks
@@ -59,6 +60,7 @@ TESTS=test/selftest-pg
 else # !USE_POSTGRES
 TESTS=test/selftest-nopg
 endif # !USE_POSTGRES
+TESTS += test/check-nondet
 
 if USE_CLANG_FORMAT
 format: always

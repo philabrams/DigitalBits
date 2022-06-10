@@ -22,6 +22,7 @@
 #include "transactions/PaymentOpFrame.h"
 #include "transactions/TransactionUtils.h"
 #include "util/Logging.h"
+#include "util/ProtocolVersion.h"
 #include "util/Timer.h"
 
 using namespace digitalbits;
@@ -45,7 +46,6 @@ TEST_CASE("payment", "[tx][payment]")
 
     VirtualClock clock;
     auto app = createTestApplication(clock, cfg);
-    app->start();
 
     // set up world
     auto root = TestAccount::createRoot(*app);
@@ -96,11 +96,11 @@ TEST_CASE("payment", "[tx][payment]")
         REQUIRE(a1Acc.thresholds[THRESHOLD_LOW] == 0);
         REQUIRE(a1Acc.thresholds[THRESHOLD_MED] == 0);
         // root did 2 transactions at this point
-        REQUIRE(rootAcc.balance == (200000000000000000 - paymentAmount -
+        REQUIRE(rootAcc.balance == (1000000000000000000 - paymentAmount -
                                     gatewayPayment * 2 - txfee * 3));
     }
 
-    closeLedgerOn(*app, 3, 1, 1, 2016);
+    closeLedgerOn(*app, 2, 1, 1, 2016);
 
     SECTION("a pays b, then a merge into b")
     {
@@ -111,7 +111,7 @@ TEST_CASE("payment", "[tx][payment]")
 
         int64 a1Balance = a1.getBalance();
         int64 b1Balance = b1.getBalance();
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_all_versions(*app, [&] {
             auto txFrame = a1.tx({payment(b1, 200), accountMerge(b1)});
@@ -137,7 +137,7 @@ TEST_CASE("payment", "[tx][payment]")
         int64 a1Balance = a1.getBalance();
         int64 b1Balance = b1.getBalance();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_all_versions(*app, [&] {
             auto txFrame = a1.tx({payment(b1, 200), b1.op(accountMerge(a1))});
@@ -162,7 +162,7 @@ TEST_CASE("payment", "[tx][payment]")
         int64 a1Balance = a1.getBalance();
         int64 b1Balance = b1.getBalance();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(7, *app, [&] {
             auto txFrame = a1.tx({accountMerge(b1), payment(b1, 200)});
@@ -275,7 +275,7 @@ TEST_CASE("payment", "[tx][payment]")
             auto tx1 = b1.tx({payment(root, paymentAmount)});
             auto tx2 = b1.tx({payment(root, 6)});
 
-            auto r = closeLedgerOn(*app, 4, 1, 2, 2016, {tx1, tx2});
+            auto r = closeLedgerOn(*app, 3, 1, 2, 2016, {tx1, tx2});
             checkTx(0, r, txSUCCESS);
             checkTx(1, r, txINSUFFICIENT_BALANCE);
 
@@ -290,7 +290,7 @@ TEST_CASE("payment", "[tx][payment]")
             auto tx1 = b1.tx({payment(root, paymentAmount)});
             auto tx2 = b1.tx({payment(root, 6)});
 
-            auto r = closeLedgerOn(*app, 4, 1, 2, 2016, {tx1, tx2});
+            auto r = closeLedgerOn(*app, 3, 1, 2, 2016, {tx1, tx2});
             checkTx(0, r, txSUCCESS);
             checkTx(1, r, txFAILED);
             REQUIRE(r[1].first.result.result.results()[0]
@@ -315,7 +315,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto createSourceAccount = TestAccount{*app, getAccount("create")};
         auto sourceSeqNum = sourceAccount.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(7, *app, [&] {
             auto tx = sourceAccount.tx(
@@ -479,7 +479,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto payAndMergeDestinationSeqNum =
             payAndMergeDestination.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(7, *app, [&] {
             auto tx = sourceAccount.tx(
@@ -498,7 +498,7 @@ TEST_CASE("payment", "[tx][payment]")
             REQUIRE(sourceAccount.getBalance() == createAmount);
             REQUIRE(payAndMergeDestination.getBalance() ==
                     amount + amount - createAmount - tx->getFeeBid());
-            REQUIRE(sourceAccount.loadSequenceNumber() == 0x500000000ull);
+            REQUIRE(sourceAccount.loadSequenceNumber() == 0x400000000ull);
             REQUIRE(payAndMergeDestination.loadSequenceNumber() ==
                     payAndMergeDestinationSeqNum);
 
@@ -559,7 +559,7 @@ TEST_CASE("payment", "[tx][payment]")
             REQUIRE(sourceAccount.getBalance() == createAmount);
             REQUIRE(payAndMergeDestination.getBalance() ==
                     amount + amount - createAmount - tx->getFeeBid());
-            REQUIRE(sourceAccount.loadSequenceNumber() == 0x500000000ull);
+            REQUIRE(sourceAccount.loadSequenceNumber() == 0x400000000ull);
             REQUIRE(payAndMergeDestination.loadSequenceNumber() ==
                     payAndMergeDestinationSeqNum);
 
@@ -614,7 +614,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto payAndMergeDestinationSeqNum =
             payAndMergeDestination.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(7, *app, [&] {
             auto tx =
@@ -694,7 +694,7 @@ TEST_CASE("payment", "[tx][payment]")
             REQUIRE(payAndMergeDestination.getBalance() ==
                     amount + amount + pay2Amount - tx->getFeeBid() -
                         createAmount);
-            REQUIRE(sourceAccount.loadSequenceNumber() == 0x500000000ull);
+            REQUIRE(sourceAccount.loadSequenceNumber() == 0x400000000ull);
             REQUIRE(payAndMergeDestination.loadSequenceNumber() ==
                     payAndMergeDestinationSeqNum);
 
@@ -752,7 +752,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto payAndMergeDestinationSeqNum =
             payAndMergeDestination.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(7, *app, [&] {
             auto tx =
@@ -836,7 +836,7 @@ TEST_CASE("payment", "[tx][payment]")
             REQUIRE(secondSourceAccount.getBalance() == amount - createAmount);
             REQUIRE(payAndMergeDestination.getBalance() ==
                     amount + amount + pay2Amount - tx->getFeeBid());
-            REQUIRE(sourceAccount.loadSequenceNumber() == 0x500000000ull);
+            REQUIRE(sourceAccount.loadSequenceNumber() == 0x400000000ull);
             REQUIRE(secondSourceAccount.loadSequenceNumber() ==
                     secondSourceSeqNum);
             REQUIRE(payAndMergeDestination.loadSequenceNumber() ==
@@ -896,7 +896,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto sourceSeqNum = sourceAccount.getLastSequenceNumber();
         auto createSourceSeqNum = createSource.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_all_versions(*app, [&] {
             auto tx = sourceAccount.tx({
@@ -925,8 +925,8 @@ TEST_CASE("payment", "[tx][payment]")
             REQUIRE(payDestination.getBalance() == create2Amount);
             REQUIRE(sourceAccount.loadSequenceNumber() == sourceSeqNum + 1);
             REQUIRE(createSource.loadSequenceNumber() == createSourceSeqNum);
-            REQUIRE(createDestination.loadSequenceNumber() == 0x500000000ull);
-            REQUIRE(payDestination.loadSequenceNumber() == 0x500000000ull);
+            REQUIRE(createDestination.loadSequenceNumber() == 0x400000000ull);
+            REQUIRE(payDestination.loadSequenceNumber() == 0x400000000ull);
 
             REQUIRE(tx->getResult().result.code() == txSUCCESS);
             REQUIRE(tx->getResult().result.results()[0].code() == opINNER);
@@ -979,7 +979,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto sourceSeqNum = sourceAccount.getLastSequenceNumber();
         auto mergeDestinationSeqNum = mergeDestination.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(4, *app, [&] {
             auto tx = sourceAccount.tx({payment(sourceAccount, pay1Amount),
@@ -1133,7 +1133,7 @@ TEST_CASE("payment", "[tx][payment]")
         auto sourceSeqNum = sourceAccount.getLastSequenceNumber();
         auto mergeDestinationSeqNum = mergeDestination.getLastSequenceNumber();
 
-        closeLedgerOn(*app, 4, 1, 2, 2016);
+        closeLedgerOn(*app, 3, 1, 2, 2016);
 
         for_versions_to(4, *app, [&] {
             auto tx = sourceAccount.tx({payment(sourceAccount, pay1Amount),
@@ -1473,7 +1473,8 @@ TEST_CASE("payment", "[tx][payment]")
                         ledgerVersion =
                             ltx.loadHeader().current().ledgerVersion;
                     }
-                    if (ledgerVersion < 13)
+                    if (protocolVersionIsBefore(ledgerVersion,
+                                                ProtocolVersion::V_13))
                     {
                         // cannot send to an account that is not the issuer
                         REQUIRE_THROWS_AS(a1.pay(b1, idr, 40),
@@ -1518,7 +1519,7 @@ TEST_CASE("payment", "[tx][payment]")
     }
     SECTION("authorize flag")
     {
-        for_all_versions(*app, [&] {
+        auto authorizeFlag = [&](TrustFlagOp flagOp) {
             gateway.setOptions(
                 setFlags(uint32_t{AUTH_REQUIRED_FLAG | AUTH_REVOCABLE_FLAG}));
 
@@ -1527,20 +1528,33 @@ TEST_CASE("payment", "[tx][payment]")
             REQUIRE_THROWS_AS(gateway.pay(a1, idr, trustLineStartingBalance),
                               ex_PAYMENT_NOT_AUTHORIZED);
 
-            gateway.allowTrust(idr, a1);
+            gateway.allowTrust(idr, a1, flagOp);
 
             gateway.pay(a1, idr, trustLineStartingBalance);
 
             // send it all back
-            gateway.denyTrust(idr, a1);
+            gateway.denyTrust(idr, a1, flagOp);
 
             REQUIRE_THROWS_AS(a1.pay(gateway, idr, trustLineStartingBalance),
                               ex_PAYMENT_SRC_NOT_AUTHORIZED);
 
-            gateway.allowTrust(idr, a1);
+            gateway.allowTrust(idr, a1, flagOp);
 
             a1.pay(gateway, idr, trustLineStartingBalance);
-        });
+        };
+
+        SECTION("allow trust")
+        {
+            for_all_versions(*app,
+                             [&] { authorizeFlag(TrustFlagOp::ALLOW_TRUST); });
+        }
+
+        SECTION("set trustline flags")
+        {
+            for_versions_from(17, *app, [&] {
+                authorizeFlag(TrustFlagOp::SET_TRUST_LINE_FLAGS);
+            });
+        }
     }
 
     for_all_versions(*app, [&] {
@@ -1608,7 +1622,7 @@ TEST_CASE("payment", "[tx][payment]")
             }
             // in ledger versions 1 and 2 each of these payment succeeds
 
-            if (ledgerVersion < 3)
+            if (protocolVersionIsBefore(ledgerVersion, ProtocolVersion::V_3))
             {
                 payNoTrust = payOk;
                 payLineFull = payOk;
@@ -1622,7 +1636,7 @@ TEST_CASE("payment", "[tx][payment]")
             };
 
             // issuer checks were removed starting from v13
-            if (ledgerVersion < 13)
+            if (protocolVersionIsBefore(ledgerVersion, ProtocolVersion::V_13))
             {
                 withoutTrustLine.push_back(
                     Data{"non existing asset with non existing issuer",
@@ -1925,7 +1939,6 @@ TEST_CASE("payment fees", "[tx][payment]")
 
         VirtualClock clock;
         auto app = createTestApplication(clock, cfg);
-        app->start();
 
         // set up world
         auto root = TestAccount::createRoot(*app);
@@ -2036,7 +2049,6 @@ TEST_CASE("payment fees", "[tx][payment]")
 
         VirtualClock clock;
         auto app = createTestApplication(clock, cfg);
-        app->start();
 
         // set up world
         auto root = TestAccount::createRoot(*app);
