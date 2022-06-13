@@ -1,5 +1,4 @@
 Installation Instructions
-
 ==================
 ## Prebuild software
 DigitalBits.io publishes software packages to the cloudsmith.io repository https://cloudsmith.io/~xdb-foundation/repos/digitalbits-core/packages/
@@ -51,6 +50,7 @@ Packages available as:
 ==================
 ## From sources
 
+
 These are intructions for building digitalbits-core from source. For a potentially quicker set up we also have digitalbits-core in a docker container:
 
 Use docker to build the app:
@@ -75,73 +75,144 @@ Branches are organized in the following way:
 For convenience, we also keep a record in the form of release tags of the
  versions that make it to production:
  * pre-releases are versions that get deployed to testnet
- * releases are versions that made it all the way in prod
+ * releases are versions that made it all the way to production
 
-When running a node, the best bet is to go with the latest release.
+## Containerized dev environment
+
+We maintain a pre-configured Docker configuration ready for development with VSCode.
+
+See the [dev container's README](.devcontainer/README.md) for more detail.
+
+## Runtime dependencies
+
+`digitalbits-core` does not have many dependencies.
+
+If core was configured (see below) to work with Postgresql, a local Postgresql server
+ will need to be deployed to the same host.
+
+To install Postgresql, follow instructions from the [Postgresql download page](https://www.postgresql.org/download/).
 
 ## Build Dependencies
 
-- `clang` >= 3.5 or `g++` >= 4.9
+- c++ toolchain and headers that supports c++17
+    - `clang` >= 10.0
+    - `g++` >= 8.0
 - `pkg-config`
 - `bison` and `flex`
 - `libpq-dev` unless you `./configure --disable-postgres` in the build step below.
 - 64-bit system
-- `clang-format-5.0` (for `make format` to work)
+- `clang-format-10` (for `make format` to work)
+- `perl`
+- `libunwind-dev`
 
-### Ubuntu 16.04
+### Ubuntu
 
-    # sudo add-apt-repository ppa:ubuntu-toolchain-r/test
-    # sudo apt-get update
-    # sudo apt-get install git build-essential pkg-config autoconf automake libtool bison flex libpq-dev clang++-3.5 gcc-4.9 g++-4.9 cpp-4.9
+#### Ubuntu 18.04
+You can install the [test toolchain](#adding-the-test-toolchain) to build and run digitalbits-core with the latest version of the llvm toolchain.
 
-In order to make changes, you'll need to install the proper version of clang-format (you may have to follow instructions on https://apt.llvm.org/ )
-    # sudo apt-get install clang-format-5.0
+Alternatively, if you want to just depend on stock Ubuntu, you will have to build with clang *and* have use `libc++` instead of `libstdc++` when compiling.
 
-See [installing gcc 4.9 on ubuntu 16.04](http://askubuntu.com/questions/428198/getting-installing-gcc-g-4-9-on-ubuntu)
+Ubuntu 18.04 has clang-10 available, that you can install with
 
-Additional, for proper documentation generation (man page), pandoc is needed:
-    # sudo apt-get install pandoc
+    # install clang-10 toolchain
+    sudo apt-get install clang-10
+
+After installing packages, head to [building with clang and libc++](#building-with-clang-and-libc).
+
+
+#### Adding the test toolchain (optional)
+    # NOTE: newer version of the compilers are not
+    #    provided by stock distributions
+    #    and are provided by the /test toolchain
+    sudo apt-get install software-properties-common
+    sudo add-apt-repository ppa:ubuntu-toolchain-r/test
+    sudo apt-get update
+
+#### Installing packages
+    # common packages
+    sudo apt-get install git build-essential pkg-config autoconf automake libtool bison flex libpq-dev libunwind-dev parallel
+    # if using clang
+    sudo apt-get install clang-10
+    # clang with libstdc++
+    sudo apt-get install gcc-8
+    # if using g++ or building with libstdc++
+    # sudo apt-get install gcc-8 g++-8 cpp-8
+
+In order to make changes, you'll need to install the proper version of clang-format.
+
+In order to install the llvm (clang) toolchain, you may have to follow instructions on https://apt.llvm.org/
+
+    sudo apt-get install clang-format-10
 
 ### OS X
 When building on OSX, here's some dependencies you'll need:
 - Install xcode
-- Install homebrew
-- brew install libsodium
-- brew install libtool
-- brew install automake
-- brew install pkg-config
-- brew install libpqxx *(If ./configure later complains about libpq missing, try PKG_CONFIG_PATH='/usr/local/lib/pkgconfig')*
+- Install [homebrew](https://brew.sh)
+- `brew install libsodium`
+- `brew install libtool`
+- `brew install autoconf`
+- `brew install automake`
+- `brew install pkg-config`
+- `brew install libpq` (required for postgres)
+- `brew install openssl` (required for postgres)
+- `brew install parallel` (required for running tests)
+- `brew install ccache` (required for enabling ccache)
+
+You'll also need to configure pkg-config by adding the following to your shell (`.zshenv` or `.zshrc`):
+```zsh
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$(brew --prefix)/opt/libpq/lib/pkgconfig"
+export PKG_CONFIG_PATH="$PKG_CONFIG_PATH:$(brew --prefix)/opt/openssl@3/lib/pkgconfig"
+```
 
 ### Windows
 See [INSTALL-Windows.md](INSTALL-Windows.md)
 
 ## Basic Installation
 
-- `git clone https://github.com/xdbfoundation/digitalbits`
-- `cd digitalbits`
+- `git clone https://github.com/xdbfoundation/DigitalBits.git`
+- `cd digitalbits-core`
 - `git submodule init`
 - `git submodule update`
 - Type `./autogen.sh`.
-- Type `./configure`   *(If configure complains about compiler versions, try `CXX=clang-3.5 ./configure` or `CXX=g++-4.9 ./configure` or similar, depending on your compiler.)*
-- Type `make` or `make -j` (for aggressive parallel build)
+- Type `./configure`   *(If configure complains about compiler versions, try `CXX=clang-10 ./configure` or `CXX=g++-8 ./configure` or similar, depending on your compiler.)*
+- Type `make` or `make -j<N>` (where `<N>` is the number of parallel builds, a number less than the number of CPU cores available, e.g. `make -j3`)
 - Type `make check` to run tests.
 - Type `make install` to install.
 
+## Building with clang and libc++
+
+On some systems, building with `libc++`, [LLVM's version of the standard library](https://libcxx.llvm.org/) can be done instead of `libstdc++` (typically used on Linux).
+
+NB: there are newer versions available of both clang and libc++, you will have to use the versions suited for your system.
+
+You may need to install additional packages for this, for example, on Linux Ubuntu 18.04 LTS with clang-10:
+
+    # install libc++ headers
+    sudo apt-get install libc++-10-dev libc++abi-10-dev
+
+Here are sample steps to achieve this:
+
+    export CC=clang-10
+    export CXX=clang++-10
+    export CFLAGS="-O3 -g1 -fno-omit-frame-pointer"
+    export CXXFLAGS="$CFLAGS -stdlib=libc++"
+    git clone https://github.com/xdbfoundation/DigitalBits.git
+    cd digitalbits-core/
+    ./autogen.sh && ./configure && make -j6
+
+## Building with Tracing
+
+Configuring with `--enable-tracy` will build and embed the client component of the [Tracy](https://github.com/wolfpld/tracy) high-resolution tracing system in the `digitalbits-core` binary.
+
+The tracing client will activate automatically when digitalbits-core is running, and will listen for connections from Tracy servers (a command-line capture utility, or a cross-platform GUI).
+
+The Tracy server components can also be compiled by configuring with `--enable-tracy-gui` or `--enable-tracy-capture`.
+
+The GUI depends on the `capstone`, `freetype` and `glfw` libraries and their headers, and on linux or BSD the `GTK-2.0` libraries and headers. On Windows and MacOS, native toolkits are used instead.
 
 
+    # On Ubuntu
+    $ sudo apt-get install libcapstone-dev libfreetype6-dev libglfw3-dev libgtk2.0-dev
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    # On MacOS
+    $ brew install capstone freetype2 glfw

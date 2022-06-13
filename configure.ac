@@ -42,23 +42,8 @@ AC_SUBST(LIBTOOL_DEPS)
 AC_LANG(C++)
 # if modifying the following macro for a future C++ version, please update CXX
 # for enable-afl in the fuzzer configuration block below
-AX_CXX_COMPILE_STDCXX_17(noext,mandatory)
-
-case "${host_os}" in
-    linux*)
-        AX_FRESH_COMPILER
-        ;;
-    cygwin*|mingw*)
-        AX_FRESH_COMPILER
-        ;;
-    darwin*)
-        # skip this check for OS X
-        ;;
-    *)
-        AC_MSG_ERROR(["OS $host_os is not supported"])
-        ;;
-esac
-
+AX_CXX_COMPILE_STDCXX(17, noext,mandatory)
+AX_FRESH_COMPILER
 # -pthread seems to be required by -std=c++14 on some hosts
 AX_APPEND_COMPILE_FLAGS([-pthread])
 
@@ -115,6 +100,17 @@ AS_IF([test "x$enable_asan" = "xyes"], [
   sanitizeopts="address"
 ])
 
+AC_ARG_ENABLE([codecoverage],
+  AS_HELP_STRING([--enable-codecoverage],
+        [build with code coverage enabled]))
+AS_IF([test "x$enable_codecoverage" = "xyes"], [
+  AC_MSG_NOTICE([ enabling codecoverage, see https://clang.llvm.org/docs/SourceBasedCodeCoverage.html ])
+
+  LDFLAGS="$LDFLAGS -fprofile-instr-generate -fcoverage-mapping"
+  CXXFLAGS="$CXXFLAGS -fprofile-instr-generate -fcoverage-mapping"
+  CFLAGS="$CFLAGS -fprofile-instr-generate -fcoverage-mapping"
+])
+
 AC_ARG_ENABLE([memcheck],
   AS_HELP_STRING([--enable-memcheck],
         [build with memcheck (memory-sanitizer) instrumentation]))
@@ -169,13 +165,16 @@ AC_ARG_ENABLE([extrachecks],
         [build with additional debugging checks enabled]))
 AS_IF([test "x$enable_extrachecks" = "xyes"], [
   # don't try to detect which c++ library we're using
-  CXXFLAGS="$CXXFLAGS -D_GLIBCXX_DEBUG=1 -D_GLIBCXX_SANITIZE_VECTOR=1 -D_LIBCPP_DEBUG=0"
+  CXXFLAGS="$CXXFLAGS -D_GLIBCXX_DEBUG=1 -D_GLIBCXX_SANITIZE_VECTOR=1 -D_LIBCPP_DEBUG=0 -DBEST_OFFER_DEBUGGING"
 ])
 
 AC_ARG_ENABLE([ccache],
               AS_HELP_STRING([--enable-ccache], [build with ccache]))
 AS_IF([test "x$enable_ccache" = "xyes"], [
   AC_CHECK_PROGS([CCACHE], [ccache])
+  AS_IF([test -z "$CCACHE"], [
+    AC_MSG_ERROR([ccache enabled but not found])
+  ])
   case "$CC" in
   *ccache\ *)
       ;;
@@ -208,17 +207,46 @@ AS_IF([test "x$enable_afl" = "xyes"], [
           [clang*], [AC_CHECK_PROGS([AFL_CLANG], [afl-clang-fast])
                      AC_CHECK_PROGS([AFL_CLANGPP], [afl-clang-fast++])
                      CC="afl-clang-fast"
+                     # below we hard code -std=c++17 since updates to AX_CXX_COMPILE_STDCXX append it to
+                     # CXX, not to CXXFLAGS and thus when setting CXX we override this. For a more detailed explanation
+                     # see: https://github.com/stellar/docker-stellar-core/pull/66#issuecomment-521886881
                      CXX="afl-clang-fast++ -std=c++17 -DAFL_LLVM_MODE=1"],
           [gcc*],   [AC_CHECK_PROGS([AFL_GCC], [afl-gcc])
                      AC_CHECK_PROGS([AFL_GPP], [afl-g++])
                      CC="afl-gcc"
+                     # below we hard code -std=c++17 since updates to AX_CXX_COMPILE_STDCXX append it to
+                     # CXX, not to CXXFLAGS and thus when setting CXX we override this. For a more detailed explanation
+                     # see: https://github.com/stellar/docker-stellar-core/pull/66#issuecomment-521886881
                      CXX="afl-g++ -std=c++17"],
           [AC_MSG_ERROR([Don't know how to instrument CC=$CC with AFL])])
 ])
 AM_CONDITIONAL([USE_AFL_FUZZ], [test "x$enable_afl" == "xyes"])
 
-# prefer 5.0 as it's the one we use
-AC_CHECK_PROGS(CLANG_FORMAT, [clang-format-5.0 clang-format])
+# check to see if we need to append -lstdc++fs or -lc++fs to access
+# functionality from <filesystem> (for some reason this was thought
+# a good idea in gcc 8 and clang 8)
+AC_MSG_CHECKING([to see if <filesystem> works without any extra libs])
+AC_RUN_IFELSE([AC_LANG_PROGRAM([[#include <filesystem>]],
+	      [[return std::filesystem::exists(std::filesystem::path("hello"));]])],
+              [AC_MSG_RESULT([yes]); FS_WORKS=yes],
+              [AC_MSG_RESULT([no]); FS_WORKS=no])
+for testlib in -lstdc++fs -lc++fs; do
+    if test "$FS_WORKS" = "no"; then
+        fs_save_LIBS="$LIBS"
+        LIBS="$testlib $LIBS"
+        AC_MSG_CHECKING([to see if <filesystem> works with $testlib])
+        AC_RUN_IFELSE([AC_LANG_PROGRAM([[#include <filesystem>]],
+		      [[return std::filesystem::exists(std::filesystem::path("hello"));]])],
+                  [AC_MSG_RESULT([yes]); FS_WORKS=yes],
+                  [AC_MSG_RESULT([no]); FS_WORKS=no; LIBS="$fs_save_LIBS"])
+    fi
+done
+if test "$FS_WORKS" = "no"; then
+   AC_MSG_ERROR([C++17 <filesystem> does not work with any known linker flags])
+fi
+
+# prefer 10 as it's the one we use
+AC_CHECK_PROGS(CLANG_FORMAT, [clang-format-10 clang-format])
 AM_CONDITIONAL([USE_CLANG_FORMAT], [test "x$CLANG_FORMAT" != "x"])
 
 AX_VALGRIND_CHECK
@@ -337,37 +365,61 @@ AC_ARG_ENABLE(tracy-capture,
         [Enable 'tracy' profiler/tracer capture program]))
 AM_CONDITIONAL(USE_TRACY_CAPTURE, [test x$enable_tracy_capture = xyes])
 
+AC_ARG_ENABLE(tracy-csvexport,
+    AS_HELP_STRING([--enable-tracy-csvexport],
+        [Enable 'tracy' profiler/tracer csvexport program]))
+AM_CONDITIONAL(USE_TRACY_CSVEXPORT, [test x$enable_tracy_csvexport = xyes])
+
 AC_ARG_ENABLE(spdlog,
-    AS_HELP_STRING([--enable-spdlog],
-        [Enable spdlog (disables easylogging)]))
-AM_CONDITIONAL(USE_SPDLOG, [test x$enable_spdlog = xyes])
+    AS_HELP_STRING([--disable-spdlog],
+        [Disable spdlog]))
+AM_CONDITIONAL(USE_SPDLOG, [test x$enable_spdlog != xno])
 
-AC_ARG_ENABLE(easylogging,
-    AS_HELP_STRING([--disable-easylogging],
-        [Disable easylogging]))
-AM_CONDITIONAL(USE_EASYLOGGING,
-               [test x$enable_easylogging != xno -a x$enable_spdlog != xyes])
+AC_ARG_ENABLE(next-protocol-version-unsafe-for-production,
+    AS_HELP_STRING([--enable-next-protocol-version-unsafe-for-production],
+        [Enable next protocol version UNSAFE FOR PRODUCTION]))
+AM_CONDITIONAL(ENABLE_NEXT_PROTOCOL_VERSION_UNSAFE_FOR_PRODUCTION,
+    [test x$enable_next_protocol_version_unsafe_for_production = xyes])
 
-case "${host_os}" in
-    *darwin*)
-        # libunwind comes standard with the command-line tools on macos
-        AC_DEFINE([HAVE_LIBUNWIND], [1],
-            [Define to 1 if you have the <libunwind.h> header file])
-        ;;
-    *)
-        
-        case "${CXX}" in
-            *clang*)
-                AC_MSG_NOTICE([backtraces disabled due to clang interaction with libunwind])
+AC_ARG_ENABLE(libunwind,
+    AS_HELP_STRING([--disable-libunwind],
+        [Disable backtraces using libunwind]))
+if test x"$enable_libunwind" != xno; then
+    case "${host_os}" in
+        *darwin*)
+            # libunwind comes standard with the command-line tools on macos
+            AC_MSG_NOTICE([using platform-native libunwind])
+            AC_DEFINE([HAVE_LIBUNWIND], [1],
+                [Define to 1 if you have the <libunwind.h> header file])
             ;;
-            *)
-                PKG_CHECK_MODULES(libunwind, libunwind,
-                    AC_DEFINE([HAVE_LIBUNWIND], [1],
-                              [Define to 1 if you have the <libunwind.h> header file]))
-           ;;
-        esac
-        ;;
-esac
+        *)
+            # Unfortunately libunwind seems to interfere with clang-compiled
+            # exception-handling, at least when linked with libgcc (which is the
+            # default of libcxx and a requirement for libstdc++). I think this is
+            # roughly caused by both libgcc and libunwind providing the C++ EH ABI
+            # symbols but, evidently, interacting with clang-compiled code slightly
+            # differently when ELF-interposed with one another, in the same binary.
+            #
+            # Haven't been able to make a reduced testcase that works. You can check
+            # that this is still a problem by running the digitalbits-core Catch2-based
+            # unit test suite: many of the tests do REQUIRE_THROWS_AS(...) and
+            # that crashes with libunwind+clang.  Haven't been able to figure out a
+            # workaround either.
+            case "${CXX}" in
+                *clang*)
+                    AC_MSG_NOTICE([backtraces disabled due to clang interaction with libunwind])
+                ;;
+                *)
+                    PKG_CHECK_MODULES(libunwind, libunwind,
+                        AC_DEFINE([HAVE_LIBUNWIND], [1],
+                                  [Define to 1 if you have the <libunwind.h> header file]))
+               ;;
+            esac
+            ;;
+    esac
+else
+  AC_MSG_NOTICE([not using libunwind as it was not requested])
+fi
 
 # Need this to pass through ccache for xdrpp, libsodium
 esc() {

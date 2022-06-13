@@ -22,6 +22,7 @@ guarantee see [`src/scp/readme.md`](https://github.com/xdbfoundation/DigitalBits
 - [Integration with other services](https://github.com/xdbfoundation/DigitalBits/blob/master/docs/integration.md)
 - [Major Components](#major-components)
 - [Supporting Code Directories](#supporting-code-directories)
+- [Contributing](/CONTRIBUTING.md)
 
 
 

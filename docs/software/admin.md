@@ -9,17 +9,17 @@ DigitalBits Core is the program nodes use to communicate with other nodes to cre
 This document describes various aspects of installing, configuring, and maintaining a `digitalbits-core` node.  It will explain:
 
 
-  - [why you should run a node](#why-run-a-node)
-  - [what you need to set up](#instance-setup)
-  - [how to install digitalbits core](#installing)
-  - [how to configure your node](#configuring)
-  - [how quorum sets work](#choosing-your-quorum-set)
-  - [how to prepare your environment before the first run](#environment-preparation)
-  - [how to join the network](#joining-the-network)
-  - [how logging works](#logging)
-  - [node monitoring and diagnostics](#monitoring-and-diagnostics)
-  - [how to perform validator maintenance](#validator-maintenance)
-  - [how to perform network wide updates](#network-configuration)
+  - [ ] [why you should run a node](#why-run-a-node)
+  - [ ] [what you need to set up](#instance-setup)
+  - [ ] [how to install digitalbits core](#installing)
+  - [ ] [how to configure your node](#configuring)
+  - [ ] [how quorum sets work](#choosing-your-quorum-set)
+  - [ ] [how to prepare your environment before the first run](#environment-preparation)
+  - [ ] [how to join the network](#joining-the-network)
+  - [ ] [how logging works](#logging)
+  - [ ] [node monitoring and diagnostics](#monitoring-and-diagnostics)
+  - [ ] [how to perform validator maintenance](#validator-maintenance)
+  - [ ] [how to perform network wide updates](#network-configuration)
 
 ## Why run a node?
 
@@ -170,9 +170,9 @@ The version number scheme that we follow is `protocol_version.release_number.pat
 See the [INSTALL](https://github.com/xdbfoundation/DigitalBits/blob/master/INSTALL.md) for build instructions.
 
 ### Package based Installation
-If you are using Ubuntu 20.04 LTS we provide the latest stable releases of [digitalbits-core](https://github.com/xdbfoundation/DigitalBits) and [frontier](https://github.com/xdbfoundation/go/tree/master/services/frontier) in Debian binary package format.
+If you are using a recent LTS version of Ubuntu we provide the latest stable releases of [digitalbits-core](https://github.com/xdbfoundation/DigitalBits) and [frontier](https://github.com/xdbfoundation/go/tree/master/services/frontier) in Debian binary package format.
 
-See [detailed installation instructions](https://github.com/xdbfoundation/DigitalBits/releases)
+See [detailed installation instructions](https://github.com/digitalbits/packages#sdf---packages)
 
 ### Container based installation
 Docker images are maintained in a few places, good starting points are:
@@ -211,34 +211,37 @@ messages will look like they came from you.
 Generate a key pair like this:
 
 `$ digitalbits-core gen-seed`
-
 the output will look something like
-
 ```
 Secret seed: SBWJ7VAPK6ABBHIJSJMUAUTVR2LQGNZNWW7NQIRV5D2BSGCE3PZA5EFI
 Public: GA7AIALXFIW2HN53Z77ZCYJIAW23NKGDMMU3ROYG3YQYLYV4ATCDL3FV
-
 ```
 
-Place the seed in your config:
+Place the seed in your config, and mark the node as "validator":
 
-`NODE_SEED="SBWJ7VAPK6ABBHIJSJMUAUTVR2LQGNZNWW7NQIRV5D2BSGCE3PZA5EFI"`
+```
+NODE_SEED="SBWJ7VAPK6ABBHIJSJMUAUTVR2LQGNZNWW7NQIRV5D2BSGCE3PZA5EFI mynode"
+NODE_IS_VALIDATOR=true
 
-and set the following value in your config:
+NODE_HOME_DOMAIN=<your domain name here - ie digitalbits.org>
 
-`NODE_IS_VALIDATOR=true`
+[[HOME_DOMAINS]]
+HOME_DOMAIN=<your domain name here, same than NODE_HOME_DOMAIN>
+QUALITY="MEDIUM"
+```
 
 If you don't include a `NODE_SEED` or set `NODE_IS_VALIDATOR=true`, you will still
-watch SCP and see all the data in the network but will not send validation messages.
+watch DCP and see all the data in the network but will not send validation messages.
 
-NB: if you run more than one node, set the `HOME_DOMAIN` common to those nodes using the `NODE_HOME_DOMAIN` property.
-Doing so will allow your nodes to be grouped correctly during [quorum set generation](#home-domains-array).
+If you run multiple validators, make sure to set `NODE_HOME_DOMAIN` to the same value
+so that your nodes get grouped correctly during [quorum set generation](#home-domains-array).
+You also need to include those other nodes in your configuration.
 
-If you want other validators to add your node to their quorum sets, you should also share your public key (GDMTUTQ... ) by publishing a digitalbits.toml file on your homedomain.
+If you want other validators to add your node to their quorum sets, you should also
+share your public key (GDMTUTQ... ) by publishing a digitalbits.toml file on your homedomain.
 
 ### Choosing your quorum set
 A good quorum set:
-
 * aligns with your organization’s priorities 
 * has enough redundancy to handle arbitrary node failures
 * maintains good quorum intersection 
@@ -301,7 +304,6 @@ HISTORY | string | archive GET command associated with validator (optional)
 If the node's `HOME_DOMAIN` aligns with an organization defined in the `[[HOME_DOMAINS]]` array, the quality rating specified there will apply to the node.  If you’re adding an individual node that is *not* covered in that array, you’ll need to specify the `QUALITY` here.
 
 Here’s an example:
-
 ```
 [[VALIDATORS]]
 NAME="deu-1"
@@ -338,7 +340,6 @@ ADDRESS="node.somerandomdomain.com"
 **HIGH** quality validators are given the most weight in automatic quorum set configuration.  Before assigning a high quality rating to a node, make sure it has low latency and good uptime, and that the organization running the node is reliable and trustworthy.  
 
 A high quality a validator:
-
 * publishes an archive
 * belongs to a suite of nodes that provide redundancy 
 
@@ -350,7 +351,6 @@ Choosing redundant nodes is good practice.  The archive requirement is programma
  
 #### Automatic quorum set generation
 Once you add validators to your configuration, digitalbits core automatically generates a quorum set using the following rules:
-
 * Validators with the same home domain are automatically grouped together and given a threshold requiring a simple majority (2f+1)
 * Heterogeneous groups of validators are given a threshold assuming byzantine failure (3f+1)
 * Entities are grouped by QUALITY and nested from HIGH to LOW 
@@ -425,6 +425,13 @@ By default, digitalbits-core will perform this automatic maintenance, so be sure
 
 If you need to regenerate the meta data, the simplest way is to replay ledgers for the range you're interested in after (optionally) clearing the database with `newdb`.
 
+Note that in some cases automatic maintenance has just too much work to do in order to get back to the nominal state.
+This can occur following large catchup operations such as when performing a full catchup that may create a backlog of 10s of millions of ledgers.
+
+If this happens, database performance can be restored; the node will take some downtime while performing the following recovery commands:
+1. run the `maintenance` http command manually with a large number of ledgers,
+2. perform a database maintenance operation such as `VACUUM FULL` to reclaim/rebuild the database as needed
+
 ##### Meta data snapshots and restoration
 
 Some deployments of digitalbits-core and Frontier will want to retain meta data for the _entire history_ of the network. This meta data can be quite large and computationally expensive to regenerate anew by replaying ledgers in digitalbits-core from an empty initial database state, as described in the previous section.
@@ -451,7 +458,7 @@ DigitalBits-core normally interacts with one or more "history archives," which a
 configurable facilities for storing and retrieving flat files containing history 
 checkpoints: bucket files and history logs. History archives are usually off-site 
 commodity storage services such as Amazon S3, Google Cloud Storage, 
-Azure Blob Storage, or custom SCP/SFTP/HTTP servers. 
+Azure Blob Storage, or custom DCP/SFTP/HTTP servers. 
 
 Use command templates in the config file to give the specifics of which 
 services you will use and how to access them. 
@@ -479,7 +486,6 @@ Archive sections can also be configured with `put` and `mkdir` commands to
  cause the instance to publish to that archive (for nodes configured as [archiver nodes](#archiver-nodes) or [full validators](#full-validators)).
 
 The very first time you want to use your archive *before starting your node* you need to initialize it with:
-
 `$ digitalbits-core new-hist <historyarchive>`
 
 **IMPORTANT:**
@@ -545,7 +551,6 @@ Until the node sees a quorum, it will say
 ```
 
 After observing consensus, a new field `quorum` will be set with information on what the network decided on, at this point the node will switch to "*Catching up*":
-
 ```json
       "quorum" : {
          "qset" : {
@@ -573,14 +578,12 @@ After observing consensus, a new field `quorum` will be set with information on 
 
 This is a phase where the node downloads data from archives.
 The state will start with something like
-
 ```json
       "state" : "Catching up",
       "status" : [ "Catching up: Awaiting checkpoint (ETA: 35 seconds)" ]
 ```
 
 and then go through the various phases of downloading and applying state such as
-
 ```json
       "state" : "Catching up",
       "status" : [ "Catching up: downloading ledger files 20094/119803 (16%)" ]
@@ -589,20 +592,19 @@ and then go through the various phases of downloading and applying state such as
 #### Synced
 
 When the node is done catching up, its state will change to
-
 ```json
       "state" : "Synced!"
 ```
 
 ## Logging
-DigitalBits-core sends logs to standard output and `digitalbits-core.log` by default, 
+DigitalBits-core sends logs to standard error and `digitalbits-core.log` by default,
 configurable as `LOG_FILE_PATH`.
 
  Log messages are classified by progressive _priority levels_:
   `TRACE`, `DEBUG`, `INFO`, `WARNING`, `ERROR` and `FATAL`.
    The logging system only emits those messages at or above its configured logging level.
 
-Log messages at different priority levels can be color-coded on standard output
+Log messages at different priority levels can be color-coded on standard error
 by setting `LOG_COLOR=true` in the config file. By default they are not color-coded.
 
 The log level can be controlled by configuration, the `-ll` command-line flag 
@@ -813,14 +815,13 @@ By default, a node will relay or respond to a survey message if the message orig
 
 ##### Example survey command
 
-In this example, we have three nodes `GB6I`, `GAWK`, and `GAKP` (we'll refer to them by the first four letters of their public keys). We will execute the commands below from `GAKP`
+In this example, we have three nodes `GB6I`, `GAWK`, and `GAKP` (we'll refer to them by the first four letters of their public keys). We will execute the commands below from `GAKP`, and note that `GB6I` has `SURVEYOR_KEYS=["$self"]` in it's config file, so `GB6I` will not relay or respond to any survey messages.
 
   1. `$ digitalbits-core http-command 'surveytopology?duration=1000&node=GB6IPEJ2NV3AKWK6OXZWPOJQ4HGRSB2ULMWBESZ5MUY6OSBUDGJOSPKD'`
   2. `$ digitalbits-core http-command 'surveytopology?duration=1000&node=GAWKRGXGM7PPZMQGUH2ATXUKMKZ5DTJHDV7UK7P4OHHA2BKSF3ZUEVWT'`
   3. `$ digitalbits-core http-command 'getsurveyresult'`
 
 Once the responses are received, the `getsurveyresult` command will return a result like this:
-
 ```json
  {
    "backlog" : null,
@@ -1238,6 +1239,8 @@ Once the responses are received, the `getsurveyresult` command will return a res
 }
 ```
 
+In this example, note that the node `GB6I` under the `topology` field has a `null` value because it's configured to not respond to the survey message.
+
 Notable field definitions
 
 * `backlog` : List of nodes for which the survey request are yet to be sent
@@ -1471,12 +1474,12 @@ This output has two main sections: `qset` and `transitive`. The former describes
 
 Entries to watch for in the `qset` section -- describing the node and its quorum set -- are:
 
-  * `agree` : the number of nodes in the quorum set that agree with this instance.
-  * `delayed` : the nodes that are participating to consensus but seem to be behind.
-  * `disagree`: the nodes that were participating but disagreed with this instance.
+  * `agree` : the number of nodes in the quorum set that seem to be up and running as expected. The local node has no reason to believe that this node is `delayed`, `disagree` or `missing`. Note that `agree` has nothing to do with DCP terms such as "accept" or "confirming".
+  * `delayed` : the nodes that seem up but behind.
+  * `disagree`: the nodes that seem up but disagree with this instance.
   * `fail_at` : the number of failed nodes that *would* cause this instance to halt.
   * `fail_with`: an example of such potential failure.
-  * `missing` : the nodes that were missing during this consensus round.
+  * `missing` : the nodes that seem down.
   * `value` : the quorum set used by this node (`t` is the threshold expressed as a number of nodes).
 
 In the example above, 6 nodes are functioning properly, one is down (`stronghold1`), and
@@ -1796,7 +1799,7 @@ Fields are:
 * `distance` : how far that node is from the root node (ie. how many quorum set hops)
 * `heard` : the latest ledger sequence number that this node voted at
 * `qset` : the node's quorum set
-* `status` : one of `behind|tracking|ahead` (compared to the root node) or `missing|unknown` (when there are no recent SCP messages for that node)
+* `status` : one of `behind|tracking|ahead` (compared to the root node) or `missing|unknown` (when there are no recent DCP messages for that node)
 * `value_id` : a unique ID for what the node is voting for (allows to quickly tell if nodes are voting for the same thing)
 * `value` : what the node is voting for
 
@@ -1883,8 +1886,7 @@ This section contains information that is useful to know but that should not sto
 
 ### Creating your own private network
 
-
-[testnet](./testnet.md) is a short tutorial demonstrating how to
+[testnet.md](./testnet.md) is a short tutorial demonstrating how to
   configure and run a short-lived, isolated test network.
 
 ### Runtime information: start and stop
@@ -1898,11 +1900,12 @@ DigitalBits-core can be gracefully exited at any time by delivering `SIGINT` or
    and you may need to remove the file before it will restart. 
    Otherwise, all components are designed to recover from abrupt termination.
 
+DigitalBits-core can also be packaged in a container system such as Docker, so long 
+as `BUCKET_DIR_PATH` and the database are stored on persistent volumes.
+
 ### In depth architecture
 
-
-[architecture](https://github.com/xdbfoundation/DigitalBits/blob/master/docs/architecture.md) 
-
+[architecture.md](https://github.com/xdbfoundation/DigitalBits/blob/master/docs/architecture.md 
   describes how digitalbits-core is structured internally, how it is intended to be 
   deployed, and the collection of servers and services needed to get the full 
   functionality and performance.

@@ -4,21 +4,19 @@
 * try Settings -> System -> About and look under System Type
 * When in doubt, see http://www.tenforums.com/tutorials/4399-system-type-32-bit-x86-64-bit-x64-windows-10-a.html
 
-## Download and install `Visual Studio 2017` (for Visual C++) ; the Community Edition is free and fully functional.
+## Download and install `Visual Studio 2022` (for Visual C++) ; the Community Edition is free and fully functional.
 * See https://www.visualstudio.com/downloads/
 * When installing, you will need to select:
     * Desktop Development with C++
     * C++ Profiling (optional)
-    * Windows 8.1 SDK
-    * Visual C++ tools for Cmake
-    * Visual C++ ATL Support
+    * Windows 10 SDK
     * C++/CLI Support
 
 ## Download and install PostgreSQL
 
 Note: if you do not want to use postgres you can select `DebugNoPostgres` as the build target.
 
-Get version 9.4.8 from https://www.enterprisedb.com/download-postgresql-binaries
+Get version 9.5 from https://www.enterprisedb.com/download-postgresql-binaries
 
 The default project file defines USE_POSTGRES and links against it.
 * Pick a directory for the database
@@ -26,7 +24,7 @@ The default project file defines USE_POSTGRES and links against it.
 * Accept the default port (5432)
 * Accept `default` for the locale (not clear if anything depends on this. The `default` locale will
 presumably depend on your operating system's setting might cause inconsistencies)
-* Add `c:\Program Files\PostgreSQL\9.4\bin` to your PATH (else the binary will fail to start,
+* Add `c:\Program Files\PostgreSQL\9.5\bin` to your PATH (else the binary will fail to start,
     not finding `libpq.dll`)
 * If you install postgres in a different folder, you will have to update the project file in two places:
     * "additional include locations" and
@@ -37,7 +35,12 @@ presumably depend on your operating system's setting might cause inconsistencies
 ## Building xdrc
  In order to compile xdrc and run the binary you will need to either
 * Download and install MinGW from http://sourceforge.net/projects/mingw/files/
-    * In the MinGW Installation Manager in `MSYS/MinGW Developer Toolkit` choose `Flex` and `Bison` packages for installation
+    * In the MinGW Installation Manager in `MSYS/MinGW Developer Toolkit` select the following packages:
+      * `Flex`
+      * `Bison`
+      * `gcc`
+      * `sed`
+      * `curl`
     * Add `C:\MinGW\msys\1.0\bin;C:\MinGW\bin` to the end of `%PATH%`
 * Download and install cygwin 64 bit build from https://cygwin.com/install.html
     * Get cygwin setup to install
@@ -45,6 +48,7 @@ presumably depend on your operating system's setting might cause inconsistencies
         * `Bison`
         * `curl` (command line)
         * `gcc-core`
+        * `sed`
     * Add `c:\cygwin64\bin` to the end of `%PATH%` (at least for Visual Studio)
 
     > Note: if you're going to use 'cp'and 'mkdir' from cygwin (tests do),
@@ -68,8 +72,8 @@ If you do not have cURL installed
 ## clang-format
 
 For making changes to the code, you should install the clang-format tool and Visual Studio extension, you can find both at http://llvm.org/builds/
-* note that the version of clang-format used currently is 5.0 (other versions may not format the same way).
-* we recommend downloading 5.0.0 from http://releases.llvm.org/download.html
+* note that the version of clang-format used currently is 8.0 (other versions may not format the same way).
+* we recommend downloading 8.0 from http://releases.llvm.org/download.html
 
 # Build on Windows using the Windows Subsystem for Linux
 To setup the subsystem, go to https://msdn.microsoft.com/en-us/commandline/wsl/install_guide

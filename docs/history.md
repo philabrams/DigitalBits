@@ -6,7 +6,8 @@ DigitalBits Core, or digitalbits-core, separates data into "current" and "histor
 
 Current data is the subject of peer-to-peer messages--consensus is only concerned with the present,
 not the past. Current data _resides_ in a local SQL database paired with each digitalbits-core
-process. This database is consulted and updated "live" in an ACID fashion as digitalbits-core applies
+process (in captive-core's case, the SQL database is replaced by an in memory datastructure).
+This database is consulted and updated "live" in an ACID fashion as digitalbits-core applies
 each [transaction](transaction.md) set for which consensus was reached and forms each new [ledger](ledger.md).
 
 Unlike many similar systems, digitalbits-core does _not_ need to consult history in order to apply a
@@ -283,8 +284,9 @@ In total, each checkpoint number `0xwwxxyyzz` consists of the following files:
     [`TransactionHistoryResultEntry`](/src/xdr/DigitalBits-ledger.x), with zero-or-more structures per
     ledger. The file is similar to the transactions file, in that there is one entry per transaction
     applied to a ledger in the checkpoint; but this file stores the _results_ of applying each
-    transaction. These files allow reconstruction the history of changes to the ledger without
-    actually running the `digitalbits-core` transaction-apply logic.
+    transaction. These files allows to get a very close approximation of the history of changes
+    to the ledger without actually running the `digitalbits-core` transaction-apply logic.
+    If full fidelity of ledger entry history is needed, see the section on the subject in the [integration document](./integration.md#ledger-state-transition-information-transactions-etc).
 
   - (Optionally) one SCP file, named by ledger number as `scp/ww/xx/yy/scp-wwxxyyzz.xdr.gz`. The file
     contains a sequence of XDR structures of the type

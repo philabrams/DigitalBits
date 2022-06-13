@@ -13,14 +13,13 @@ From the TLD of the repo, run
 ## Adding multiple nodes
 
 For each node on your new network:
-
 * generate a keypair and set `NODE_SEED`
 * set `RUN_STANDALONE=false` and `NODE_IS_VALIDATOR=true`
 * set the `QUORUM_SET` and `KNOWN_PEERS` to refer to one another
 * decide on a history archive and add a HISTORY config entry for it
 * Set the `DATABASE` config variables on each node to your choice of database
 
-Optionally: Create databases for each to use " e.g., by using PostgreSQL's `createdb` command.
+Optionally: Create databases for each to use--e.g., by using PostgreSQL's `createdb` command.
 
 Run:
 
