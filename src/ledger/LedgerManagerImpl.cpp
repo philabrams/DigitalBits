@@ -663,7 +663,7 @@ LedgerManagerImpl::closeLedger(LedgerCloseData const& ledgerData)
     // In addition to the _canonical_ LedgerResultSet hashed into the
     // LedgerHeader, we optionally collect an even-more-fine-grained record of
     // the ledger entries modified by each tx during tx processing in a
-    // LedgerCloseMeta, for streaming to attached clients (typically: horizon).
+    // LedgerCloseMeta, for streaming to attached clients (typically: frontier).
     std::unique_ptr<LedgerCloseMeta> ledgerCloseMeta;
     if (mMetaStream || mMetaDebugStream)
     {

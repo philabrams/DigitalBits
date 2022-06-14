@@ -304,7 +304,7 @@ generateScaledLiveEntries(
                 // added to the scaled account, but numSubEntries isn't
                 // adjusted, which can lead to some unfortuante scenarios as
                 // mentioned here
-                // - https://github.com/digitalbits/digitalbits-core/issues/3323
+                // - https://github.com/stellar/stellar-core/issues/3323
                 if (signer.key.type() == SIGNER_KEY_TYPE_ED25519)
                 {
                     ae.signers.emplace_back(

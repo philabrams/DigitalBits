@@ -111,7 +111,6 @@ For a list of performance related tool, see https://en.wikipedia.org/wiki/Load_(
 
 
 Utilization per processor
-
 ```
 $ mpstat -P ALL
 06:16:11 PM  CPU    %usr   %nice    %sys %iowait    %irq   %soft  %steal  %guest  %gnice   %idle
@@ -132,7 +131,6 @@ On Linux system, this can be done with a command like
 `iotop` is the equivalent of `top` for I/O; it also allows to aggregate data, which can be useful to identify small but steady utilization of I/O subsystems.
 
 Basic view:
-
 ```
 iostat -d
 Linux 3.13.0-139-generic (core-live-005)        04/10/2018      _x86_64_        (2 CPU)
@@ -172,7 +170,6 @@ If you want to profile as a regular user, with `sysctl` check the values of:
     kernel.perf_event_mlock_kb
 
 In particular
-
      * `kernel.perf_event_paranoid` that when above 1, disables CPU events.
      * `kernel.sched_schedstats` should be set to 1
 
@@ -184,7 +181,6 @@ If they are not what you want, you can set them, as root:
 
 #### Compile flags
 Preparing the binary to be "perf friendly" (run before running `configure`):
-
 ```
 # whatever flags you want to set, -O2 is typical
 export CFLAGS="-O2"
@@ -198,7 +194,6 @@ export CXXFLAGS="$CXXFLAGS -fno-omit-frame-pointer -ggdb"
 #### Reducing the dataset
 
 A run can be scoped to
-
 * only a subset of threads, see the `--tid` option
 * a specific range, for example only capture data during "normal" operation,
 excluding startup/shutdown.
@@ -210,21 +205,17 @@ excluding startup/shutdown.
 Note: on some systems, the quality of symbols differs depending on the tool-chain. If you don't get good stack traces, try switching to gcc/g++.
 
 In order to improve the quality of stack traces:
-
 * Use your own version of dependencies (sqlite, etc) with the same compile options (done for you by digitalbits-core's configure script) 
 * Use alternate libraries such as google-tcmalloc
-
 ```
 # you may need to install a package such as libtcmalloc-minimal4 for this to work
 export LDFLAGS=-ltcmalloc_minimal
 # alternatively, you can start "digitalbits-core", with something like
 LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libtcmalloc_minimal.so ./digitalbits-core ...
 ```
-
 * use clang/clang++ and a custom `libc++` compiled with the same compilation options that you use.
     * See [building a custom libc++](CONTRIBUTING.md#building-a-custom-libc)
     * Do not enable memory sanitizer for that version, instead run something like
-
 ```
     svn co http://llvm.org/svn/llvm-project/llvm/trunk llvm
     (cd llvm/projects && svn co http://llvm.org/svn/llvm-project/libcxx/trunk libcxx)
@@ -319,7 +310,7 @@ install the required pre-requesites to build clients, run in a shell:
 
 Then build one of the servers.
 
-Solutions for servers compatible with the version of stellar-core can be found under:
+Solutions for servers compatible with the version of digitalbits-core can be found under:
 
 ```
     * lib/tracy/profiler/build/win32 (GUI)

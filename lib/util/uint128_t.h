@@ -28,7 +28,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 Minor modifications
-Copyright (c) 2021 Stellar Development Foundation and contributors.
+Copyright (c) 2021 DigitalBits Development Foundation and contributors.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -1120,7 +1120,7 @@ using namespace large_int::literals;
 using large_int::uint128_t;
 #endif /* INT128_NO_EXPORT */
 
-namespace stellar
+namespace digitalbits
 {
 #ifdef USE_BUILTIN128
 
