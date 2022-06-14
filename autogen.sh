@@ -29,16 +29,21 @@ esac
 # submodule bump we'll want to change the code here to the new interface
 # (running `autogen.sh -b` in the libsodium directory)
 
+root_dir=$PWD
+
 case "${skip_submodules}" in
     0|no|false|"")
-        git submodule update --init
-        git submodule foreach '
+        for i in $(cat submodules.txt);
+        do
+            cd $root_dir'/'$i
+            echo $root_dir'/'$i
             autogen=$(find . -name autogen.sh)
             if [ -x "$autogen" ]; then
                 cd $(dirname "$autogen")
                 DO_NOT_UPDATE_CONFIG_SCRIPTS=1 ./autogen.sh
+                cd $root_dir
             fi
-            '
+        done
     ;;
 esac
 
