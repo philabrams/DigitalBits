@@ -2053,7 +2053,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                     a.tx({setOptions(setSigner(makeSigner(b, 1)) |
                                      setMasterWeight(1) | setLowThreshold(2) |
                                      setMedThreshold(2) | setHighThreshold(2)),
-                          setOptions(setHomeDomain("digitalbits.org"))});
+                          setOptions(setHomeDomain("digitalbits.io"))});
                 tx->addSignature(b);
 
                 validateTxResults(tx, *app, {baseFee * 2, txBAD_AUTH_EXTRA});
@@ -2063,7 +2063,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                     a.tx({setOptions(setSigner(makeSigner(b, 1)) |
                                      setMasterWeight(1) | setLowThreshold(2) |
                                      setMedThreshold(2) | setHighThreshold(2)),
-                          setOptions(setHomeDomain("digitalbits.org"))});
+                          setOptions(setHomeDomain("digitalbits.io"))});
                 tx->addSignature(b);
 
                 validateTxResults(

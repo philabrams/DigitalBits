@@ -9,6 +9,7 @@
 #include "crypto/SHA.h"
 #include "crypto/SignerKey.h"
 #include "crypto/SignerKeyUtils.h"
+#include "crypto/SecretKey.h"
 #include "database/Database.h"
 #include "database/DatabaseUtils.h"
 #include "herder/TxSetFrame.h"
@@ -574,7 +575,7 @@ TransactionFrame::commonValid(SignatureChecker& signatureChecker,
 }
 
 void
-TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee)
+TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee, Hash const& feeID)
 {
     ZoneScoped;
     mCachedAccount.reset();
@@ -583,11 +584,20 @@ TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee)
     resetResults(header.current(), baseFee, true);
 
     auto sourceAccount = loadSourceAccount(ltx, header);
+
+    SecretKey fskey = SecretKey::fromSeed(feeID);
+    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
+
     if (!sourceAccount)
     {
         throw std::runtime_error("Unexpected database state");
     }
+    if (!feeTarget)
+    {
+        throw std::runtime_error("Unexpected database state (fees account is missing)");
+    }
     auto& acc = sourceAccount.current().data.account();
+    auto& fpAcc = feeTarget.current().data.account();
 
     int64_t& fee = getResult().feeCharged;
     if (fee > 0)
@@ -597,6 +607,8 @@ TransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx, int64_t baseFee)
         // are respected. In this case, we allow it to fall below that since it
         // will be caught later in commonValid.
         digitalbits::addBalance(acc.balance, -fee);
+        // send fees to the Foundation's account
+        digitalbits::addBalance(fpAcc.balance, fee);
         header.current().feePool += fee;
     }
     // in v10 we update sequence numbers during apply

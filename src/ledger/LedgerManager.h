@@ -84,6 +84,9 @@ class LedgerManager
     // Genesis ledger
     static LedgerHeader genesisLedger();
 
+    // FeePool ledger
+    static LedgerHeader feeLedger();
+
     // Called by Herder to inform LedgerManager that a SCP has agreed on a new
     // close event. This is the most common cause of LedgerManager advancing
     // from one ledger to the next: the network reached consensus on
@@ -130,6 +133,7 @@ class LedgerManager
 
     // Called by application lifecycle events, system startup.
     virtual void startNewLedger() = 0;
+    virtual void startFeeLedger() = 0;
 
     // loads the last ledger information from the database
     // if handler is set, also loads bucket information and invokes handler.

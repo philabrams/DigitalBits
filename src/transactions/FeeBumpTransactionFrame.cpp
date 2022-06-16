@@ -7,6 +7,7 @@
 #include "crypto/SHA.h"
 #include "crypto/SignerKey.h"
 #include "crypto/SignerKeyUtils.h"
+#include "crypto/SecretKey.h"
 #include "ledger/LedgerTxn.h"
 #include "ledger/LedgerTxnEntry.h"
 #include "ledger/LedgerTxnHeader.h"
@@ -375,16 +376,25 @@ FeeBumpTransactionFrame::insertKeysForTxApply(
 
 void
 FeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
-                                          int64_t baseFee)
+                                          int64_t baseFee,
+                                          Hash const& feeID)
 {
     resetResults(ltx.loadHeader().current(), baseFee, true);
 
     auto feeSource = digitalbits::loadAccount(ltx, getFeeSourceID());
+    SecretKey fskey = SecretKey::fromSeed(feeID);
+    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
+
     if (!feeSource)
     {
         throw std::runtime_error("Unexpected database state");
     }
+    if (!feeTarget)
+    {
+        throw std::runtime_error("Unexpected database state (fees account is missing)");
+    }
     auto& acc = feeSource.current().data.account();
+    auto& fpAcc = feeTarget.current().data.account();
 
     auto header = ltx.loadHeader();
     int64_t& fee = getResult().feeCharged;
@@ -395,6 +405,8 @@ FeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
         // are respected. In this case, we allow it to fall below that since it
         // will be caught later in commonValid.
         digitalbits::addBalance(acc.balance, -fee);
+        // send fees to the Foundation's account
+        digitalbits::addBalance(fpAcc.balance, fee);
         header.current().feePool += fee;
     }
 }

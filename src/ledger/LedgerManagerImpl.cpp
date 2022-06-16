@@ -210,6 +210,21 @@ LedgerManager::genesisLedger()
     return result;
 }
 
+LedgerHeader
+LedgerManager::feeLedger()
+{
+    LedgerHeader result;
+    // all fields are initialized by default to 0
+    // set the ones that are not 0
+    result.ledgerVersion = GENESIS_LEDGER_VERSION;
+    result.baseFee = GENESIS_LEDGER_BASE_FEE;
+    result.baseReserve = GENESIS_LEDGER_BASE_RESERVE;
+    result.maxTxSetSize = GENESIS_LEDGER_MAX_TX_SIZE;
+    result.totalCoins = GENESIS_LEDGER_TOTAL_COINS;
+    result.ledgerSeq = 2;
+    return result;
+}
+
 void
 LedgerManagerImpl::startNewLedger(LedgerHeader const& genesisLedger)
 {
@@ -249,6 +264,50 @@ LedgerManagerImpl::startNewLedger()
     }
 
     startNewLedger(ledger);
+}
+
+void
+LedgerManagerImpl::startFeeLedger(LedgerHeader const& feeLedger)
+{
+    auto ledgerTime = mLedgerClose.TimeScope();
+    SecretKey fskey = SecretKey::fromSeed(mApp.getFeePoolID());
+
+    LedgerTxn ltx(mApp.getLedgerTxnRoot(), false);
+
+    LedgerEntry feePoolEntry;
+
+    ltx.loadHeader().current() = feeLedger;
+    ltx.loadHeader().current().previousLedgerHash = mLastClosedLedger.hash;
+
+    feePoolEntry.lastModifiedLedgerSeq = 2;
+    feePoolEntry.data.type(ACCOUNT);
+    auto& fpAccount = feePoolEntry.data.account();
+    fpAccount.accountID = fskey.getPublicKey();
+    fpAccount.thresholds[0] = 1;
+    fpAccount.balance = 100;
+
+    ltx.create(feePoolEntry);
+
+    CLOG_INFO(Ledger, "Established fee pool ledger, closing");
+
+    ledgerClosed(ltx);
+    ltx.commit();
+}
+
+void
+LedgerManagerImpl::startFeeLedger()
+{
+    auto ledger = feeLedger();
+    auto const& cfg = mApp.getConfig();
+    if (cfg.USE_CONFIG_FOR_GENESIS)
+    {
+        ledger.ledgerVersion = cfg.LEDGER_PROTOCOL_VERSION;
+        ledger.baseFee = cfg.TESTING_UPGRADE_DESIRED_FEE;
+        ledger.baseReserve = cfg.TESTING_UPGRADE_RESERVE;
+        ledger.maxTxSetSize = cfg.TESTING_UPGRADE_MAX_TX_SET_SIZE;
+    }
+
+    startFeeLedger(ledger);
 }
 
 static void
@@ -313,10 +372,12 @@ LedgerManagerImpl::loadLastKnownLedger(function<void()> handler)
         else
         {
             // In no-history mode, this method should only be called when
-            // the LCL is genesis.
+            // the LCL is genesis or the fee ledger
             releaseAssertOrThrow(mLastClosedLedger.hash == lastLedgerHash);
-            releaseAssertOrThrow(mLastClosedLedger.header.ledgerSeq ==
-                                 GENESIS_LEDGER_SEQ);
+            releaseAssertOrThrow((mLastClosedLedger.header.ledgerSeq ==
+                                 GENESIS_LEDGER_SEQ) ||
+                                 (mLastClosedLedger.header.ledgerSeq ==
+                                 GENESIS_LEDGER_SEQ + 1));
             CLOG_INFO(Ledger, "LCL is genesis: {}",
                       ledgerAbbrev(mLastClosedLedger));
         }
@@ -1048,7 +1109,7 @@ LedgerManagerImpl::processFeesSeqNums(
         for (auto tx : txs)
         {
             LedgerTxn ltxTx(ltx);
-            tx->processFeeSeqNum(ltxTx, baseFee);
+            tx->processFeeSeqNum(ltxTx, baseFee, mApp.getFeePoolID());
             LedgerEntryChanges changes = ltxTx.getChanges();
             if (ledgerCloseMeta)
             {

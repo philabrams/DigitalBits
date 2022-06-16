@@ -125,6 +125,8 @@ class ApplicationImpl : public Application
 
     virtual Hash const& getNetworkID() const override;
 
+    virtual Hash const& getFeePoolID() const override;
+
     virtual AbstractLedgerTxnParent& getLedgerTxnRoot() override;
 
     virtual void resetDBForInMemoryMode() override;
@@ -204,6 +206,7 @@ class ApplicationImpl : public Application
     VirtualClock::system_time_point mStartedOn;
 
     Hash mNetworkID;
+    Hash mFeeID;
 
     // A handle to any running self-check, to avoid scheduling
     // more than one concurrently.

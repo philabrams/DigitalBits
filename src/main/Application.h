@@ -294,6 +294,8 @@ class Application
     // instances
     virtual Hash const& getNetworkID() const = 0;
 
+    virtual Hash const& getFeePoolID() const = 0;
+
     virtual AbstractLedgerTxnParent& getLedgerTxnRoot() = 0;
 
     virtual void validateAndLogConfig() = 0;

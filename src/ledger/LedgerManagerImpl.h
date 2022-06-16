@@ -118,6 +118,10 @@ class LedgerManagerImpl : public LedgerManager
 
     void startNewLedger(LedgerHeader const& genesisLedger);
     void startNewLedger() override;
+
+    void startFeeLedger(LedgerHeader const& feeLedger);
+    void startFeeLedger() override;
+
     void loadLastKnownLedger(std::function<void()> handler) override;
     virtual bool rebuildingInMemoryState() override;
     virtual void setupInMemoryStateRebuild() override;
