@@ -207,7 +207,7 @@ TEST_CASE("pathpayment strict send", "[tx][pathpayment]")
     auto cur3 = makeAsset(gateway2, "CUR3");
     auto cur4 = makeAsset(gateway2, "CUR4");
 
-    closeLedgerOn(*app, 2, 1, 1, 2016);
+    closeLedgerOn(*app, 3, 1, 1, 2016);
 
     SECTION("not supported before version 12")
     {
@@ -2490,7 +2490,7 @@ TEST_CASE("pathpayment strict send uses all offers in a loop",
             if (issuerToDelete &&
                 protocolVersionStartsFrom(ledgerVersion, ProtocolVersion::V_13))
             {
-                closeLedgerOn(*app, 2, 1, 1, 2016);
+                closeLedgerOn(*app, 3, 1, 1, 2016);
                 // remove issuer
                 issuerToDelete->merge(root);
             }

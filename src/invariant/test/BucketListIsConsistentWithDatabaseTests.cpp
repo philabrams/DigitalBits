@@ -40,7 +40,7 @@ struct BucketListGenerator
   public:
     BucketListGenerator()
         : mAppGenerate(createTestApplication(mClock, getTestConfig(0)))
-        , mLedgerSeq(1)
+        , mLedgerSeq(2)
     {
         auto skey = SecretKey::fromSeed(mAppGenerate->getNetworkID());
         LedgerKey key(ACCOUNT);
@@ -599,7 +599,7 @@ TEST_CASE("BucketListIsConsistentWithDatabase added entries",
             blg.generateLedgers(100);
 
             digitalbits::uniform_int_distribution<uint32_t> addAtLedgerDist(
-                2, blg.mLedgerSeq);
+                3, blg.mLedgerSeq);
             auto le = LedgerTestUtils::generateValidLedgerEntry(5);
             le.lastModifiedLedgerSeq = addAtLedgerDist(gRandomEngine);
 

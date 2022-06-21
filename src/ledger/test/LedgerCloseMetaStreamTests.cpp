@@ -26,7 +26,7 @@ using namespace digitalbits;
 TEST_CASE("LedgerCloseMetaStream file descriptor - LIVE_NODE",
           "[ledgerclosemetastreamlive]")
 {
-    // Live reqires a multinode simulation, as we're not allowed to run a
+    // Live requires a multinode simulation, as we're not allowed to run a
     // validator and record metadata streams at the same time (to avoid the
     // unbounded-latency stream-write step): N nodes participating in consensus,
     // and two watching and streaming metadata -- the second one using
@@ -191,8 +191,8 @@ TEST_CASE("LedgerCloseMetaStream file descriptor - LIVE_NODE",
 
     auto lcms = readLcms(path);
     auto lcmsSafe = readLcms(pathSafe);
-    // The "- 1" is because we don't stream meta for the genesis ledger.
-    REQUIRE(lcms.size() == expectedLastWatcherLedger - 1);
+    // The "- 2" is because we don't stream meta for the genesis and fee ledgers.
+    REQUIRE(lcms.size() == expectedLastWatcherLedger - 2);
     REQUIRE(lcms.back().v0().ledgerHeader.hash == expectedLastUnsafeHash);
     // The node with EXPERIMENTAL_PRECAUTION_DELAY_META should not have streamed
     // the meta for the latest ledger (or the latest ledger before the corrupt
@@ -287,7 +287,7 @@ TEST_CASE("LedgerCloseMetaStream file descriptor - REPLAY_IN_MEMORY",
     XDRInputFileStream stream;
     stream.open(path);
     LedgerCloseMeta lcm;
-    size_t nLcm = 1;
+    size_t nLcm = 2;
     while (stream && stream.readOne(lcm))
     {
         ++nLcm;

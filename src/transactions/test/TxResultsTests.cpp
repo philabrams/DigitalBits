@@ -308,7 +308,7 @@ TEST_CASE("txresults", "[tx][txresults]")
 
     SECTION("merge account")
     {
-        closeLedgerOn(*app, 2, 1, 1, 2016);
+        closeLedgerOn(*app, 3, 1, 1, 2016);
         SECTION("normal")
         {
             auto applyResult = expectedResult(

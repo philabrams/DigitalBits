@@ -58,7 +58,7 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
     SECTION("old-style transaction")
     {
         for_all_versions(*app, [&]() {
-            closeLedgerOn(*app, 2, 1, 1, 2017);
+            closeLedgerOn(*app, 3, 1, 1, 2017);
 
             auto root = TestAccount::createRoot(*app);
 
@@ -79,7 +79,7 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
         auto timeBoundsTest = [&](xdr::pointer<TimeBounds> timeBounds,
                                   std::string const& res) {
             for_all_versions(*app, [&]() {
-                closeLedgerOn(*app, 2, 1, 1, 2017);
+                closeLedgerOn(*app, 3, 1, 1, 2017);
 
                 auto root = TestAccount::createRoot(*app);
 
@@ -145,13 +145,13 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
     SECTION("new-style transaction v1")
     {
         for_versions_to(12, *app, [&]() {
-            closeLedgerOn(*app, 2, 1, 1, 2017);
+            closeLedgerOn(*app, 3, 1, 1, 2017);
             REQUIRE(submit(createV1()) ==
                     errorResult(txNOT_SUPPORTED, baseFee));
         });
 
         for_versions_from(13, *app, [&]() {
-            closeLedgerOn(*app, 2, 1, 1, 2017);
+            closeLedgerOn(*app, 3, 1, 1, 2017);
             REQUIRE(submit(createV1()) == PENDING_RESULT);
         });
     }
@@ -173,13 +173,13 @@ TEST_CASE("transaction envelope bridge", "[commandhandler]")
         };
 
         for_versions_to(12, *app, [&]() {
-            closeLedgerOn(*app, 2, 1, 1, 2017);
+            closeLedgerOn(*app, 3, 1, 1, 2017);
             REQUIRE(submit(createFeeBump()) ==
                     errorResult(txNOT_SUPPORTED, 2 * baseFee));
         });
 
         for_versions_from(13, *app, [&]() {
-            closeLedgerOn(*app, 2, 1, 1, 2017);
+            closeLedgerOn(*app, 3, 1, 1, 2017);
             REQUIRE(submit(createFeeBump()) == PENDING_RESULT);
         });
     }
@@ -372,7 +372,7 @@ TEST_CASE("manualclose", "[commandhandler]")
             "overflow int32_t is accepted")
     {
         std::string retStr;
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ);
+        REQUIRE(lastLedgerNum() == LedgerManager::FEE_POOL_LEDGER_SEQ);
         submitClose(std::make_optional<uint32_t>(maxLedgerNum), noCloseTime,
                     retStr);
         CAPTURE(retStr);
@@ -415,7 +415,7 @@ TEST_CASE("manualclose", "[commandhandler]")
         "manual close time that does not overflow documented limit is accepted")
     {
         std::string retStr;
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ);
+        REQUIRE(lastLedgerNum() == LedgerManager::FEE_POOL_LEDGER_SEQ);
         submitClose(noLedgerSeq,
                     std::make_optional<TimePoint>(firstSecondOfYear2200GMT),
                     retStr);
@@ -428,7 +428,7 @@ TEST_CASE("manualclose", "[commandhandler]")
     {
         uint64_t const overflowingCloseTime = firstSecondOfYear2200GMT + 1ULL;
         std::string retStr;
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ);
+        REQUIRE(lastLedgerNum() == LedgerManager::FEE_POOL_LEDGER_SEQ);
         CAPTURE(retStr);
         REQUIRE_THROWS_AS(
             submitClose(noLedgerSeq,
@@ -452,7 +452,7 @@ TEST_CASE("manualclose", "[commandhandler]")
 
         submitClose(noLedgerSeq,
                     std::make_optional<TimePoint>(initialCloseTime), retStr);
-        REQUIRE(lastLedgerNum() == LedgerManager::GENESIS_LEDGER_SEQ + 1);
+        REQUIRE(lastLedgerNum() == LedgerManager::FEE_POOL_LEDGER_SEQ + 1);
         REQUIRE(lastCloseTime() == initialCloseTime);
         REQUIRE(VirtualClock::to_time_t(app->getClock().system_now()) ==
                 initialCloseTime);

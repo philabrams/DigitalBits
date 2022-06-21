@@ -81,6 +81,7 @@ namespace digitalbits
 {
 
 const uint32_t LedgerManager::GENESIS_LEDGER_SEQ = 1;
+const uint32_t LedgerManager::FEE_POOL_LEDGER_SEQ = LedgerManager::GENESIS_LEDGER_SEQ + 1;
 const uint32_t LedgerManager::GENESIS_LEDGER_VERSION = 0;
 const uint32_t LedgerManager::GENESIS_LEDGER_BASE_FEE = 100;
 const uint32_t LedgerManager::GENESIS_LEDGER_BASE_RESERVE = 100000000;
@@ -377,7 +378,7 @@ LedgerManagerImpl::loadLastKnownLedger(function<void()> handler)
             releaseAssertOrThrow((mLastClosedLedger.header.ledgerSeq ==
                                  GENESIS_LEDGER_SEQ) ||
                                  (mLastClosedLedger.header.ledgerSeq ==
-                                 GENESIS_LEDGER_SEQ + 1));
+                                 FEE_POOL_LEDGER_SEQ));
             CLOG_INFO(Ledger, "LCL is genesis: {}",
                       ledgerAbbrev(mLastClosedLedger));
         }

@@ -727,7 +727,7 @@ TEST_CASE("txset base fee", "[herder][txset]")
         auto balancesBefore = getBalances();
 
         // apply this
-        closeLedgerOn(*app, 2, 1, 1, 2020, txSet->mTransactions);
+        closeLedgerOn(*app, 3, 1, 1, 2020, txSet->mTransactions);
 
         auto balancesAfter = getBalances();
         int64_t lowFee = INT64_MAX, highFee = 0;
@@ -1698,7 +1698,7 @@ TEST_CASE("SCP State", "[herder][acceptance]")
 
         REQUIRE(sim->getNode(nodeIDs[2])
                     ->getLedgerManager()
-                    .getLastClosedLedgerNum() == 1);
+                    .getLastClosedLedgerNum() == 2);
 
         // start up node 0 and 1 again
         // nodes 0 and 1 have lost their SCP state as they got restarted
@@ -1906,7 +1906,7 @@ TEST_CASE("herder externalizes values", "[herder]")
         return currentALedger();
     };
 
-    uint32_t currentLedger = 1;
+    uint32_t currentLedger = 2;
     REQUIRE(currentALedger() == currentLedger);
     REQUIRE(currentCLedger() == currentLedger);
 
@@ -2285,7 +2285,7 @@ TEST_CASE("quick restart", "[herder][quickRestart]")
         return currentValidatorLedger();
     };
 
-    uint32_t currentLedger = 1;
+    uint32_t currentLedger = 2;
     REQUIRE(currentValidatorLedger() == currentLedger);
     REQUIRE(currentListenerLedger() == currentLedger);
 

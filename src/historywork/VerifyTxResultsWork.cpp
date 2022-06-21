@@ -103,7 +103,8 @@ VerifyTxResultsWork::verifyTxResultsOfCheckpoint()
             auto txResultEntry = getCurrentTxResultSet(ledgerSeq);
             auto resultSetHash =
                 sha256(xdr::xdr_to_opaque(txResultEntry.txResultSet));
-            auto genesis = ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ &&
+            auto genesis = (ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ ||
+                           ledgerSeq == LedgerManager::FEE_POOL_LEDGER_SEQ) &&
                            txResultEntry.txResultSet.results.empty();
 
             if (!genesis && resultSetHash != curr.header.txSetResultHash)

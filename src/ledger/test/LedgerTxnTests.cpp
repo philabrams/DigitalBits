@@ -63,7 +63,7 @@ generateLedgerEntryWithSameKey(LedgerEntry const& leBase)
 {
     LedgerEntry le;
     le.data.type(leBase.data.type());
-    le.lastModifiedLedgerSeq = 1;
+    le.lastModifiedLedgerSeq = 2;
     do
     {
         switch (le.data.type())
@@ -146,7 +146,7 @@ TEST_CASE("LedgerTxn commit into LedgerTxn", "[ledgertxn]")
     auto app = createTestApplication(clock, getTestConfig());
 
     LedgerEntry le1 = LedgerTestUtils::generateValidLedgerEntry();
-    le1.lastModifiedLedgerSeq = 1;
+    le1.lastModifiedLedgerSeq = 2;
     LedgerKey key = LedgerEntryKey(le1);
 
     auto le2 = generateLedgerEntryWithSameKey(le1);
@@ -217,7 +217,7 @@ TEST_CASE("LedgerTxn rollback into LedgerTxn", "[ledgertxn]")
         auto app = createTestApplication(clock, getTestConfig(0, mode));
 
         LedgerEntry le1 = LedgerTestUtils::generateValidLedgerEntry();
-        le1.lastModifiedLedgerSeq = 1;
+        le1.lastModifiedLedgerSeq = 2;
         LedgerKey key = LedgerEntryKey(le1);
 
         auto le2 = generateLedgerEntryWithSameKey(le1);
@@ -311,7 +311,7 @@ TEST_CASE("LedgerTxn round trip", "[ledgertxn]")
             auto key = LedgerEntryKey(le);
             if (entries.find(LedgerEntryKey(le)) == entries.end())
             {
-                le.lastModifiedLedgerSeq = 1;
+                le.lastModifiedLedgerSeq = 2;
                 newBatch[LedgerEntryKey(le)] = le;
             }
         }
@@ -513,7 +513,7 @@ TEST_CASE("LedgerTxn create", "[ledgertxn]")
     auto app = createTestApplication(clock, getTestConfig());
 
     LedgerEntry le = LedgerTestUtils::generateValidLedgerEntry();
-    le.lastModifiedLedgerSeq = 1;
+    le.lastModifiedLedgerSeq = 2;
     LedgerKey key = LedgerEntryKey(le);
 
     SECTION("fails with children")
@@ -574,7 +574,7 @@ TEST_CASE("LedgerTxn createWithoutLoading and updateWithoutLoading",
         auto app = createTestApplication(clock, getTestConfig(0, mode));
 
         LedgerEntry le = LedgerTestUtils::generateValidLedgerEntry();
-        le.lastModifiedLedgerSeq = 1;
+        le.lastModifiedLedgerSeq = 2;
         LedgerKey key = LedgerEntryKey(le);
 
         SECTION("fails with children")
@@ -667,7 +667,7 @@ TEST_CASE("LedgerTxn erase", "[ledgertxn]")
         auto app = createTestApplication(clock, getTestConfig(0, mode));
 
         LedgerEntry le = LedgerTestUtils::generateValidLedgerEntry();
-        le.lastModifiedLedgerSeq = 1;
+        le.lastModifiedLedgerSeq = 2;
         LedgerKey key = LedgerEntryKey(le);
 
         SECTION("fails with children")
@@ -740,7 +740,7 @@ TEST_CASE("LedgerTxn eraseWithoutLoading", "[ledgertxn]")
         auto app = createTestApplication(clock, getTestConfig(0, mode));
 
         LedgerEntry le = LedgerTestUtils::generateValidLedgerEntry();
-        le.lastModifiedLedgerSeq = 1;
+        le.lastModifiedLedgerSeq = 2;
         LedgerKey key = LedgerEntryKey(le);
 
         SECTION("fails with children")
@@ -1272,7 +1272,7 @@ TEST_CASE("LedgerTxn load", "[ledgertxn]")
         auto app = createTestApplication(clock, getTestConfig(0, mode));
 
         LedgerEntry le = LedgerTestUtils::generateValidLedgerEntry();
-        le.lastModifiedLedgerSeq = 1;
+        le.lastModifiedLedgerSeq = 2;
         LedgerKey key = LedgerEntryKey(le);
 
         SECTION("fails with children")
@@ -1423,7 +1423,7 @@ TEST_CASE("LedgerTxn loadWithoutRecord", "[ledgertxn]")
     auto app = createTestApplication(clock, getTestConfig());
 
     LedgerEntry le = LedgerTestUtils::generateValidLedgerEntry();
-    le.lastModifiedLedgerSeq = 1;
+    le.lastModifiedLedgerSeq = 2;
     LedgerKey key = LedgerEntryKey(le);
 
     SECTION("fails with children")

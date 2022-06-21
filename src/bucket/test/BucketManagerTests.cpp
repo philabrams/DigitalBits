@@ -1230,15 +1230,15 @@ class StopAndRestartBucketMergesTest
             createTestApplication<BucketManagerTestApplication>(*clock, cfg);
         uint32_t finalLedger2 = finalLedger;
         CLOG_INFO(Bucket,
-                  "Running stop/restart test in ledger range 2..{} = {:#x}",
+                  "Running stop/restart test in ledger range 3..{} = {:#x}",
                   finalLedger, finalLedger2);
-        for (uint32_t i = 2;
+        for (uint32_t i = 3;
              !app->getClock().getIOContext().stopped() && i < finalLedger; ++i)
         {
             LedgerManagerForBucketTests& lm = app->getLedgerManager();
             lm.setNextLedgerEntryBatchForBucketTesting(
-                mInitEntryBatches[i - 2], mLiveEntryBatches[i - 2],
-                mDeadEntryBatches[i - 2]);
+                mInitEntryBatches[i - 3], mLiveEntryBatches[i - 3],
+                mDeadEntryBatches[i - 3]);
             resolveAllMerges(app->getBucketManager().getBucketList());
             auto countersBeforeClose =
                 app->getBucketManager().readMergeCounters();

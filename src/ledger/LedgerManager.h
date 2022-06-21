@@ -39,6 +39,7 @@ class LedgerManager
 {
   public:
     static const uint32_t GENESIS_LEDGER_SEQ;
+    static const uint32_t FEE_POOL_LEDGER_SEQ;
     static const uint32_t GENESIS_LEDGER_VERSION;
     static const uint32_t GENESIS_LEDGER_BASE_FEE;
     static const uint32_t GENESIS_LEDGER_BASE_RESERVE;
