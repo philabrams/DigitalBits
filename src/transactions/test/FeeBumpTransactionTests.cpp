@@ -252,7 +252,7 @@ TEST_CASE("fee bump transactions", "[tx][feebump]")
             LedgerTxn ltx(app->getLedgerTxnRoot());
             fb->processFeeSeqNum(ltx, fee, app->getFeePoolID());
             auto delta = ltx.getDelta();
-            REQUIRE(delta.entry.size() == 1);
+            REQUIRE(delta.entry.size() == 2);
             auto gkey = delta.entry.begin()->first;
             REQUIRE(gkey.type() == InternalLedgerEntryType::LEDGER_ENTRY);
             REQUIRE(gkey.ledgerKey().account().accountID == acc.getPublicKey());
@@ -268,7 +268,7 @@ TEST_CASE("fee bump transactions", "[tx][feebump]")
         SECTION("fee source does not exist")
         {
             auto acc = root.create("A", 2 * reserve + 3 * fee);
-            closeLedgerOn(*app, 2, 1, 2, 2016);
+            closeLedgerOn(*app, 3, 1, 2, 2016);
             for_versions_from(13, *app, [&] {
                 auto fb = feeBump(app->getNetworkID(), acc, root, root, 2 * fee,
                                   fee, 1);

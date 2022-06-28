@@ -422,9 +422,9 @@ tooManySponsoring(Application& app, TestAccount& successfulOpAcc,
                     auto& le = acc.current();
                     auto& ae = le.data.account();
                     // the total amount of coins was changed in commit 5b871e7
-                    long balance_diff = 
+                    auto balance_diff = 
                         app.getLedgerManager().genesisLedger().totalCoins - ae.balance;
-                    long totalCoinsOld = static_cast<long>(1.0E+18);
+                    auto totalCoinsOld = static_cast<int64_t>(1.0E+18);
                     ae.balance = totalCoinsOld - balance_diff;
                     ae.ext.v(1);
                     ae.ext.v1().ext.v(2);
@@ -448,6 +448,11 @@ tooManySponsoring(Application& app, TestAccount& successfulOpAcc,
                     auto acc = digitalbits::loadAccount(ltx, root.getPublicKey());
                     auto& le = acc.current();
                     auto& ae = le.data.account();
+                    // the total amount of coins was changed in commit 5b871e7
+                    auto balance_diff = 
+                        app.getLedgerManager().genesisLedger().totalCoins - ae.balance;
+                    auto totalCoinsOld = static_cast<int64_t>(1.0E+18);
+                    ae.balance = totalCoinsOld - balance_diff;
                     ae.ext.v(1);
                     ae.ext.v1().ext.v(2);
 
@@ -475,6 +480,11 @@ tooManySponsoring(Application& app, TestAccount& successfulOpAcc,
                     auto acc = digitalbits::loadAccount(ltx, root.getPublicKey());
                     auto& le = acc.current();
                     auto& ae = le.data.account();
+                    // the total amount of coins was changed in commit 5b871e7
+                    auto balance_diff = 
+                        app.getLedgerManager().genesisLedger().totalCoins - ae.balance;
+                    auto totalCoinsOld = static_cast<int64_t>(1.0E+18);
+                    ae.balance = totalCoinsOld - balance_diff;
                     ae.ext.v(1);
                     ae.ext.v1().ext.v(2);
 
@@ -587,7 +597,11 @@ tooManySubentries(Application& app, TestAccount& testAcc,
                         digitalbits::loadAccount(ltx, testAcc.getPublicKey());
                     auto& le = acc.current();
                     auto& ae = le.data.account();
-
+                    // the total amount of coins was changed in commit 5b871e7
+                    auto balance_diff = 
+                        app.getLedgerManager().genesisLedger().totalCoins - ae.balance;
+                    auto totalCoinsOld = static_cast<int64_t>(1.0E+18);
+                    ae.balance = totalCoinsOld - balance_diff;
                     // Set numSponsoring close to UINT32_MAX and set
                     // numSubEntries high enough so only the successfulOp will
                     // succeed. This should validate the numSponsoring +

@@ -498,7 +498,9 @@ TEST_CASE("merge", "[tx][merge]")
                 auto tx2 = a1.tx({payment(root, 100)});
                 auto a1Balance = a1.getBalance();
                 auto b1Balance = b1.getBalance();
-                auto r = closeLedgerOn(*app, 3, 1, 1, 2017, {tx1, tx2},
+                // can this be a problem or something else???
+                // Change 3 to 4
+                auto r = closeLedgerOn(*app, 4, 1, 1, 2017, {tx1, tx2},
                                        /* strictOrder */ true);
                 checkTx(0, r, txSUCCESS);
                 checkTx(1, r, txNO_ACCOUNT);
@@ -652,7 +654,7 @@ TEST_CASE("merge", "[tx][merge]")
                 return market.addOffer(
                     acc1, {cur1, native, Price{1, 1}, INT64_MAX - 2 * minBal});
             });
-            closeLedgerOn(*app, 3, 1, 1, 2017);
+            closeLedgerOn(*app, 4, 1, 1, 2017);
             REQUIRE_THROWS_AS(acc2.merge(acc1), ex_ACCOUNT_MERGE_DEST_FULL);
             root.pay(acc2, txfee - 1);
             acc2.merge(acc1);

@@ -1531,7 +1531,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
             txSet->add(txFrame);
 
             // Close this ledger
-            app->getHerder().externalizeValue(txSet, 2, 1, emptyUpgradeSteps);
+            app->getHerder().externalizeValue(txSet, 3, 1, emptyUpgradeSteps);
 
             REQUIRE(app->getLedgerManager().getLastClosedLedgerNum() == 3);
         };
@@ -1619,7 +1619,7 @@ TEST_CASE("txenvelope", "[tx][envelope]")
                         setMinTime(txFrame, 1000);
                         setMaxTime(txFrame, start);
 
-                        closeLedgerOn(*app, 3, start + 1);
+                        closeLedgerOn(*app, 4, start + 1);
                         applyCheck(txFrame, *app);
                         REQUIRE(txFrame->getResultCode() == txTOO_LATE);
                     }

@@ -85,7 +85,7 @@ TEST_CASE("bump sequence", "[tx][bumpsequence]")
 
     SECTION("seqnum equals starting sequence")
     {
-        closeLedgerOn(*app, 2, 1, 1, 2020);
+        closeLedgerOn(*app, 3, 1, 1, 2020);
 
         int64_t newSeq = 0;
         {
