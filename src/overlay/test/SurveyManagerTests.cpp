@@ -90,7 +90,7 @@ TEST_CASE("topology survey", "[overlay][survey][topology]")
     simulation->startAllNodes();
 
     // wait for ledgers to close so nodes get the updated transitive quorum
-    int nLedgers = 1;
+    int nLedgers = 2;
     simulation->crankUntil(
         [&simulation, nLedgers]() {
             return simulation->haveAllExternalized(nLedgers + 1, 1);

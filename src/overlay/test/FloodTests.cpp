@@ -77,7 +77,7 @@ TEST_CASE("Flooding", "[flood][overlay][acceptance]")
         {
             // Wait until all nodes externalize
             simulation->crankUntil(
-                [&]() { return simulation->haveAllExternalized(2, 1); },
+                [&]() { return simulation->haveAllExternalized(3, 1); },
                 std::chrono::seconds(1), false);
             for (auto const& n : nodes)
             {

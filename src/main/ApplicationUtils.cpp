@@ -141,7 +141,8 @@ setupApp(Config& cfg, VirtualClock& clock, uint32_t startAtLedger,
     auto lcl = app->getLedgerManager().getLastClosedLedgerHeader();
 
     if (cfg.isInMemoryMode() &&
-        lcl.header.ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ)
+        (lcl.header.ledgerSeq == LedgerManager::GENESIS_LEDGER_SEQ ||
+        lcl.header.ledgerSeq == LedgerManager::FEE_POOL_LEDGER_SEQ))
     {
         // If ledger is genesis, rebuild genesis state from buckets
         if (!applyBucketsForLCL(*app))
@@ -156,7 +157,8 @@ setupApp(Config& cfg, VirtualClock& clock, uint32_t startAtLedger,
     {
         // At this point, setupApp has either confirmed that we can rebuild from
         // the existing buckets, or reset the DB to genesis
-        if (lcl.header.ledgerSeq != LedgerManager::GENESIS_LEDGER_SEQ)
+        if (lcl.header.ledgerSeq != LedgerManager::GENESIS_LEDGER_SEQ &&
+            lcl.header.ledgerSeq != LedgerManager::FEE_POOL_LEDGER_SEQ)
         {
             auto lclHashStr = binToHex(lcl.hash);
             if (lcl.header.ledgerSeq == startAtLedger &&
