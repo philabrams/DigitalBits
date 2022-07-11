@@ -15,5 +15,3 @@ jobs:
           ref: master
           token: ${{ secrets.PERSONAL_TOKEN }}
 
-
-#test
