@@ -13,6 +13,8 @@ target_sources(core
         CommandLine.h
         Config.cpp
         Config.h
+        Diagnostics.cpp
+        Diagnostics.h
         DigitalBitsCoreVersion.cpp
         DigitalBitsCoreVersion.h
         dumpxdr.cpp
@@ -25,7 +27,9 @@ target_sources(core
         PersistentState.cpp
         PersistentState.h
 
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ApplicationUtilsTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/CommandHandlerTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ConfigTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ExternalQueueTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SelfCheckTests.cpp>
 )

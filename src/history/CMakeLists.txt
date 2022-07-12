@@ -11,10 +11,6 @@ target_sources(core
         HistoryManager.h
         HistoryManagerImpl.cpp
         HistoryManagerImpl.h
-        InferredQuorum.cpp
-        InferredQuorum.h
-        InferredQuorumUtils.cpp
-        InferredQuorumUtils.h
         StateSnapshot.cpp
         StateSnapshot.h
 

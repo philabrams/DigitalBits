@@ -12,6 +12,8 @@ target_sources(core
         WorkScheduler.h
         WorkSequence.cpp
         WorkSequence.h
+        WorkWithCallback.cpp
+        WorkWithCallback.h
 
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/WorkTests.cpp>
 )

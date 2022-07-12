@@ -6,6 +6,8 @@ target_sources(core
         BucketListIsConsistentWithDatabase.h
         ConservationOfDigitalBits.cpp
         ConservationOfDigitalBits.h
+        ConstantProductInvariant.cpp
+        ConstantProductInvariant.h
         Invariant.h
         InvariantDoesNotHold.h
         InvariantManager.h
@@ -15,6 +17,8 @@ target_sources(core
         LedgerEntryIsValid.h
         LiabilitiesMatchOffers.cpp
         LiabilitiesMatchOffers.h
+        OrderBookIsNotCrossed.cpp
+        OrderBookIsNotCrossed.h
         SponsorshipCountIsValid.cpp
         SponsorshipCountIsValid.h
 
@@ -26,5 +30,6 @@ target_sources(core
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/InvariantTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerEntryIsValidTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LiabilitiesMatchOffersTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/OrderBookIsNotCrossedTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SponsorshipCountIsValidTests.cpp>
 )

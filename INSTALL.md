@@ -144,7 +144,7 @@ In order to make changes, you'll need to install the proper version of clang-for
 In order to install the llvm (clang) toolchain, you may have to follow instructions on https://apt.llvm.org/
 
     sudo apt-get install clang-format-10
-
+./vcpkg/
 ### OS X
 When building on OSX, here's some dependencies you'll need:
 - Install xcode
@@ -174,7 +174,13 @@ See [INSTALL-Windows.md](INSTALL-Windows.md)
 - `cd digitalbits-core`
 - `git submodule init`
 - `git submodule update`
-- `mkdir build`.
+- `mkdir build`
+- `./vcpkg/bootstrap-vcpkg.sh`
+- `./vcpkg/vcpkg install "aws-sdk-cpp[secretsmanager]:x64-linux" --recurse`
+- `./vcpkg/vcpkg install "zlib:x64-linux"`
+- `./vcpkg/vcpkg install "libpq:x64-linux"`
+- `export CC=clang`
+- `export CXX=clang++`
 - `cmake -S . -B build`
 - `cd build && make` or `cd build && make -j<N>` (where `<N>` is the number of parallel builds, a number less than the number of CPU cores available, e.g. `make -j3`)
 - `make check` to run tests.

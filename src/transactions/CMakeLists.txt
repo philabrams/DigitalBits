@@ -10,6 +10,10 @@ target_sources(core
         ChangeTrustOpFrame.h
         ClaimClaimableBalanceOpFrame.cpp
         ClaimClaimableBalanceOpFrame.h
+        ClawbackClaimableBalanceOpFrame.cpp
+        ClawbackClaimableBalanceOpFrame.h
+        ClawbackOpFrame.cpp
+        ClawbackOpFrame.h
         CreateAccountOpFrame.cpp
         CreateAccountOpFrame.h
         CreateClaimableBalanceOpFrame.cpp
@@ -22,6 +26,10 @@ target_sources(core
         FeeBumpTransactionFrame.h
         InflationOpFrame.cpp
         InflationOpFrame.h
+        LiquidityPoolDepositOpFrame.cpp
+        LiquidityPoolDepositOpFrame.h
+        LiquidityPoolWithdrawOpFrame.cpp
+        LiquidityPoolWithdrawOpFrame.h
         ManageBuyOfferOpFrame.cpp
         ManageBuyOfferOpFrame.h
         ManageDataOpFrame.cpp
@@ -48,6 +56,8 @@ target_sources(core
         RevokeSponsorshipOpFrame.h
         SetOptionsOpFrame.cpp
         SetOptionsOpFrame.h
+        SetTrustLineFlagsOpFrame.cpp
+        SetTrustLineFlagsOpFrame.h
         SignatureChecker.cpp
         SignatureChecker.h
         SignatureUtils.cpp
@@ -64,6 +74,8 @@ target_sources(core
         TransactionSQL.h
         TransactionUtils.cpp
         TransactionUtils.h
+        TrustFlagsOpFrameBase.cpp
+        TrustFlagsOpFrameBase.h
 
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/TxSimCreateClaimableBalanceOpFrame.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/simulation/TxSimCreateClaimableBalanceOpFrame.h>
@@ -91,11 +103,16 @@ target_sources(core
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/BumpSequenceTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ChangeTrustTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ClaimableBalanceTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ClawbackClaimableBalanceTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ClawbackTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/CreateAccountTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/EndSponsoringFutureReservesTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ExchangeTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/FeeBumpTransactionTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/InflationTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LiquidityPoolDepositTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LiquidityPoolTradeTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LiquidityPoolWithdrawTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ManageBuyOfferTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ManageDataTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/MergeTests.cpp>
@@ -105,6 +122,7 @@ target_sources(core
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/PaymentTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/RevokeSponsorshipTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SetOptionsTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SetTrustLineFlagsTests.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SignatureUtilsTest.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SponsorshipTestUtils.cpp>
         $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SponsorshipTestUtils.h>

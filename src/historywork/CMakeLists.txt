@@ -2,6 +2,8 @@ target_sources(core
     PRIVATE
         BatchDownloadWork.cpp
         BatchDownloadWork.h
+        CheckSingleLedgerHeaderWork.cpp
+        CheckSingleLedgerHeaderWork.h
         DownloadBucketsWork.cpp
         DownloadBucketsWork.h
         DownloadVerifyTxResultsWork.cpp

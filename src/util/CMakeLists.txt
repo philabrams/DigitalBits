@@ -1,6 +1,6 @@
 target_sources(core
     PRIVATE
-        Algoritm.h
+        Algorithm.h
         AwsSecrets.cpp
         AwsSecrets.h
         Backtrace.cpp
@@ -24,6 +24,8 @@ target_sources(core
         MetricResetter.cpp
         MetricResetter.h
         NonCopyable.h
+        ProtocolVersion.cpp
+        ProtocolVersion.h
         RandHasher.h
         RandomEvictionCache.h
         Scheduler.cpp
@@ -33,6 +35,8 @@ target_sources(core
         SpdlogTweaks.h
         StatusManager.cpp
         StatusManager.h
+        TarjanSCCCalculator.cpp
+        TarjanSCCCalculator.h
         Thread.cpp
         Thread.h
         Timer.cpp
@@ -49,7 +53,8 @@ target_sources(core
         must_use.h
         numeric.cpp
         numeric.h
-        optional.h
+        numeric128.h
+
         types.cpp
         types.h
 

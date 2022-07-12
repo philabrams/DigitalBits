@@ -4,7 +4,6 @@ target_sources(lib3rdparty
         crc16.cpp
         getopt_long.c
         siphash.cpp
-        uint128_t.cpp
 
         basen.h
         cbitset.h
@@ -14,5 +13,6 @@ target_sources(lib3rdparty
         finally.h
         getopt.h
         siphash.h
+        stdrandom.h
         uint128_t.h
 )

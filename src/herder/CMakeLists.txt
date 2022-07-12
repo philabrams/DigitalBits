@@ -20,8 +20,12 @@ target_sources(core
         QuorumIntersectionCheckerImpl.h
         QuorumTracker.cpp
         QuorumTracker.h
+        SurgePricingUtils.cpp
+        SurgePricingUtils.h
         TransactionQueue.cpp
         TransactionQueue.h
+        TxQueueLimiter.cpp
+        TxQueueLimiter.h
         TxSetFrame.cpp
         TxSetFrame.h
         Upgrades.cpp

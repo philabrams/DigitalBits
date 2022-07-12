@@ -2,6 +2,10 @@ target_sources(core
     PRIVATE
         CheckpointRange.cpp
         CheckpointRange.h
+        FlushAndRotateMetaDebugWork.cpp
+        FlushAndRotateMetaDebugWork.h
+        InMemoryLedgerTxn.cpp
+        InMemoryLedgerTxn.h
         InMemoryLedgerTxnRoot.cpp
         InMemoryLedgerTxnRoot.h
         InternalLedgerEntry.cpp
@@ -24,6 +28,7 @@ target_sources(core
         LedgerTxnHeader.cpp
         LedgerTxnHeader.h
         LedgerTxnImpl.h
+        LedgerTxnLiquidityPoolSQL.cpp
         LedgerTxnOfferSQL.cpp
         LedgerTxnTrustLineSQL.cpp
         NonSociRelatedException.h
