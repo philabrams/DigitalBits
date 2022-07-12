@@ -1,0 +1,30 @@
+target_sources(core
+    PRIVATE
+        AccountSubEntriesCountIsValid.cpp
+        AccountSubEntriesCountIsValid.h
+        BucketListIsConsistentWithDatabase.cpp
+        BucketListIsConsistentWithDatabase.h
+        ConservationOfDigitalBits.cpp
+        ConservationOfDigitalBits.h
+        Invariant.h
+        InvariantDoesNotHold.h
+        InvariantManager.h
+        InvariantManagerImpl.cpp
+        InvariantManagerImpl.h
+        LedgerEntryIsValid.cpp
+        LedgerEntryIsValid.h
+        LiabilitiesMatchOffers.cpp
+        LiabilitiesMatchOffers.h
+        SponsorshipCountIsValid.cpp
+        SponsorshipCountIsValid.h
+
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/AccountSubEntriesCountIsValidTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/BucketListIsConsistentWithDatabaseTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/ConservationOfDigitalBitsTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/InvariantTestUtils.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/InvariantTestUtils.h>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/InvariantTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LedgerEntryIsValidTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/LiabilitiesMatchOffersTests.cpp>
+        $<$<BOOL:${BUILD_TESTS_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/test/SponsorshipCountIsValidTests.cpp>
+)

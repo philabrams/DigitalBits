@@ -89,7 +89,7 @@ include_directories(
   ${medida_BINARY_DIR}
 )
 
-add_library(medida SHARED
+add_library(medida STATIC
   ${medida_SOURCES}
   ${medida_PROTO_SRCS}
 )
@@ -158,9 +158,10 @@ install(FILES ${PKGCONFIG_FILE}
 
 
 ## Testing
-
-enable_testing()
-add_subdirectory(test)
+if(NOT APPLE)
+  enable_testing()
+  add_subdirectory(test)
+endif()
 
 
 ## Documentation
@@ -182,17 +183,19 @@ if(BUILD_DOCS)
   )
 endif()
 
-install(DIRECTORY ${PROJECT_BINARY_DIR}/doc/
-  DESTINATION share/doc/libmedida-dev/html/
-)
+if(BUILD_DOCS)
+  install(DIRECTORY ${PROJECT_BINARY_DIR}/doc/
+    DESTINATION share/doc/libmedida-dev/html/
+  )
+endif()
 
 
 ## Examples
 
-add_subdirectory(examples)
+# add_subdirectory(examples)
 
-install(FILES
-  examples/medida_example1.cc
-  DESTINATION share/doc/libmedida-dev/examples/
-)
+# install(FILES
+#   examples/medida_example1.cc
+#   DESTINATION share/doc/libmedida-dev/examples/
+# )
 

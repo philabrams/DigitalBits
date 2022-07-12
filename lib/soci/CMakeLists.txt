@@ -1,0 +1,103 @@
+add_library(soci STATIC "")
+
+target_sources(soci
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/backend-loader.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/backend-loader.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/blob-exchange.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/blob.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/blob.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/connection-parameters.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/connection-parameters.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/connection-pool.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/connection-pool.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/error.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/error.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/exchange-traits.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/into-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/into-type.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/into.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/once-temp-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/once-temp-type.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/prepare-temp-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/prepare-temp-type.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/procedure.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/procedure.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/query_transformation.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ref-counted-prepare-info.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ref-counted-prepare-info.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ref-counted-statement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/ref-counted-statement.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/row-exchange.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/row.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/row.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/rowid-exchange.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/rowid.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/rowid.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/rowset.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/session.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/session.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci-backend.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci-config.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci-platform.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci-simple.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci-simple.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/soci_backends_config.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/statement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/statement.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/transaction.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/transaction.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/type-conversion-traits.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/type-conversion.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/type-holder.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/type-ptr.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/unsigned-types.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/use-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/use-type.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/use.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/values-exchange.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/values.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/values.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/core/version.h
+
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/blob.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/common.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/common.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/factory.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/row-id.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/session.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/soci-sqlite3.h
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/standard-into-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/standard-use-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/statement.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/vector-into-type.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3/vector-use-type.cpp
+
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/blob.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/common.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/common.h>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/error.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/factory.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/row-id.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/session.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/soci-postgresql.h>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/standard-into-type.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/standard-use-type.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/statement.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/vector-into-type.cpp>
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql/vector-use-type.cpp>
+)
+
+target_include_directories(soci
+    PRIVATE
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/core>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/sqlite3>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src/backends/postgresql>
+        $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/sqlite>
+)
+
+target_link_libraries(soci
+    PUBLIC
+        $<$<BOOL:${USE_POSTGRES_OPTION}>:PostgreSQL::PostgreSQL>
+)

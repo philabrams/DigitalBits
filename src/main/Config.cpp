@@ -13,17 +13,19 @@
 #include "main/DigitalBitsCoreVersion.h"
 #include "scp/LocalNode.h"
 #include "scp/QuorumSetUtils.h"
+#include "util/AwsSecrets.h"
 #include "util/Fs.h"
 #include "util/GlobalChecks.h"
 #include "util/Logging.h"
 #include "util/XDROperators.h"
 #include "util/types.h"
-
 #include "util/UnorderedSet.h"
+
 #include <fmt/chrono.h>
 #include <fmt/format.h>
 #include <functional>
 #include <numeric>
+#include <json/json.h>
 #include <sstream>
 #include <stdexcept>
 #include <type_traits>
@@ -228,6 +230,8 @@ Config::Config() : NODE_SEED(SecretKey::random())
     HISTOGRAM_WINDOW_SIZE = std::chrono::seconds(30);
 
     HALT_ON_INTERNAL_TRANSACTION_ERROR = false;
+    DATABASE_ARN = "";
+    NODE_SEED_ARN = "";
 
 #ifdef BUILD_TESTS
     TEST_CASES_ENABLED = false;
@@ -1077,6 +1081,22 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
                 PublicKey nodeID;
                 parseNodeID(readString(item), nodeID, NODE_SEED, true);
             }
+            else if (item.first == "NODE_SEED_ARN")
+            {
+                NODE_SEED_ARN = readString(item);
+                PublicKey nodeID;
+
+                if (NODE_SEED_ARN.size())
+                {
+                    auto nodeSeedAws = getSecretById(NODE_SEED_ARN);
+                    parseNodeID(nodeSeedAws, nodeID, NODE_SEED, true);
+                }
+                else
+                {
+                    LOG_INFO(DEFAULT_LOG, 
+                        "Could not load node seed from AWS, no ARN provided.");
+                }
+            }
             else if (item.first == "NODE_IS_VALIDATOR")
             {
                 NODE_IS_VALIDATOR = readBool(item);
@@ -1238,6 +1258,11 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             else if (item.first == "DATABASE")
             {
                 DATABASE = SecretValue{readString(item)};
+            }
+            else if (item.first == "DATABASE_ARN")
+            {
+                DATABASE_ARN = readString(item);
+                loadDbConfigAws();
             }
             else if (item.first == "NETWORK_PASSPHRASE")
             {
@@ -1983,4 +2008,46 @@ Config::toString(SCPQuorumSet const& qset)
 }
 
 std::string const Config::STDIN_SPECIAL_NAME = "stdin";
+
+void Config::loadDbConfigAws()
+{
+    if (DATABASE_ARN.size())
+    {
+        auto dbInfoStr = getSecretById(DATABASE_ARN);
+
+        Json::Value dbInfoJson;
+        Json::Reader jsonReader;
+
+        if (jsonReader.parse(dbInfoStr, dbInfoJson))
+        {
+            auto engine = dbInfoJson["engine"].asString();
+            std::string database;
+            if (engine == "postgres")
+            {
+                database = fmt::format("postgresql://dbname={} user={} password={} host={} port={}",
+                    dbInfoJson["dbname"].asString(), dbInfoJson["username"].asString(),
+                    dbInfoJson["password"].asString(), dbInfoJson["host"].asString(),
+                    dbInfoJson["port"].asString());
+            }
+            else if (engine == "sqlite")
+            {
+                database = "sqlite3://digitalbits.db";
+            }
+            else
+            {
+                throw std::runtime_error("Uknown DB engine.");
+            }
+            DATABASE = SecretValue{database};
+        }
+        else
+        {
+            throw std::runtime_error("Could not parse DB Information.");
+        }
+    }
+    else
+    {
+        LOG_INFO(DEFAULT_LOG,
+            "Could not load database configurations from AWS, no ARN provided.");
+    }
+}
 }

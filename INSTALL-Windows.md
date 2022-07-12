@@ -4,12 +4,18 @@
 * try Settings -> System -> About and look under System Type
 * When in doubt, see http://www.tenforums.com/tutorials/4399-system-type-32-bit-x86-64-bit-x64-windows-10-a.html
 
-## Download and install `Visual Studio 2022` (for Visual C++) ; the Community Edition is free and fully functional.
+## Download and install `CMake`
+* See https://cmake.org/install/
+* CMake version should be >= 3.22
+
+## Download and install `Visual Studio` (for Visual C++) ; the Community Edition is free and fully functional.
 * See https://www.visualstudio.com/downloads/
 * When installing, you will need to select:
     * Desktop Development with C++
     * C++ Profiling (optional)
     * Windows 10 SDK
+    * Visual C++ tools for Cmake
+    * Visual C++ ATL Support
     * C++/CLI Support
 
 ## Download and install PostgreSQL
@@ -88,6 +94,8 @@ Note that you can (and should) install the Windows version of postgres even when
 - `git clone PATH_TO_DIGITALBITS_CORE`
 - `git submodule init`
 - `git submodule update`
-- Open the solution `Builds\VisualStudio\digitalbits-core.sln`
+- Type `mkdir build`.
+- Type `cmake -S . -B build`
+- Open the solution `build\VisualStudio\digitalbits-core.sln`
 - Pick the target architecture and flavor (e.g. x64, Release)
 - Hit "Build Solution (F7)"

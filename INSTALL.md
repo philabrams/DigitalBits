@@ -99,7 +99,8 @@ To install Postgresql, follow instructions from the [Postgresql download page](h
     - `g++` >= 8.0
 - `pkg-config`
 - `bison` and `flex`
-- `libpq-dev` unless you `./configure --disable-postgres` in the build step below.
+- `libpq-dev` unless you set `USE_POSTGRES_OPTION` to `OFF`.
+- `cmake` >= 3.22
 - 64-bit system
 - `clang-format-10` (for `make format` to work)
 - `perl`
@@ -173,11 +174,11 @@ See [INSTALL-Windows.md](INSTALL-Windows.md)
 - `cd digitalbits-core`
 - `git submodule init`
 - `git submodule update`
-- Type `./autogen.sh`.
-- Type `./configure`   *(If configure complains about compiler versions, try `CXX=clang-10 ./configure` or `CXX=g++-8 ./configure` or similar, depending on your compiler.)*
-- Type `make` or `make -j<N>` (where `<N>` is the number of parallel builds, a number less than the number of CPU cores available, e.g. `make -j3`)
-- Type `make check` to run tests.
-- Type `make install` to install.
+- `mkdir build`.
+- `cmake -S . -B build`
+- `cd build && make` or `cd build && make -j<N>` (where `<N>` is the number of parallel builds, a number less than the number of CPU cores available, e.g. `make -j3`)
+- `make check` to run tests.
+- `make install` to install.
 
 ## Building with clang and libc++
 

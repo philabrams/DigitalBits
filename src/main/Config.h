@@ -104,6 +104,8 @@ class Config : public std::enable_shared_from_this<Config>
     void verifyLoadGenOpCountForTestingConfigs();
 
     std::vector<std::chrono::microseconds> mOpApplySleepTimeForTesting;
+    // Update application configuration with secrets stored in AWS.
+    void loadDbConfigAws();
 
   public:
     static const uint32 CURRENT_LEDGER_PROTOCOL_VERSION;
@@ -464,6 +466,10 @@ class Config : public std::enable_shared_from_this<Config>
     // the core's internal errors via catching them early.
     // The default value is false.
     bool HALT_ON_INTERNAL_TRANSACTION_ERROR;
+    // ARN for the secrets to be fetched on runtime
+    std::string DATABASE_ARN;
+    std::string NODE_SEED_ARN;
+
 
 #ifdef BUILD_TESTS
     // If set to true, the application will be aware this run is for a test
@@ -484,7 +490,6 @@ class Config : public std::enable_shared_from_this<Config>
 
     void load(std::string const& filename);
     void load(std::istream& in);
-
     // fixes values of connection-relates settings
     void adjust();
 
