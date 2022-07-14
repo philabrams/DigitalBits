@@ -26,6 +26,7 @@ target_sources(core
         NonCopyable.h
         ProtocolVersion.cpp
         ProtocolVersion.h
+        RandHasher.cpp
         RandHasher.h
         RandomEvictionCache.h
         Scheduler.cpp

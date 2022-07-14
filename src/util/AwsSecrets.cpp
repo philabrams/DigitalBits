@@ -10,7 +10,6 @@ namespace digitalbits
 {
 std::string getSecretById(const std::string& secretId)
 {
-    CLOG(INFO, "SecretsManager") << "Testing logging";
     Aws::SecretsManager::SecretsManagerClient sm;
     Aws::SecretsManager::Model::GetSecretValueRequest request;
     Aws::String secretIdAws(secretId.c_str(), secretId.size());

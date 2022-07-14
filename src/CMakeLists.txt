@@ -51,6 +51,7 @@ file(COPY
   ${CMAKE_SOURCE_DIR}/docs/digitalbits-core_standalone.cfg
   ${CMAKE_SOURCE_DIR}/docs/digitalbits-core_testnet.cfg 
   ${CMAKE_SOURCE_DIR}/docs/digitalbits-core_testnet_legacy.cfg
+  ${CMAKE_SOURCE_DIR}/docs/digitalbits-core_testnet_validator.cfg
   ${CMAKE_SOURCE_DIR}/docs/digitalbits-core_example_validators.cfg
   DESTINATION ${CMAKE_SOURCE_DIR}/src/testdata
 )
