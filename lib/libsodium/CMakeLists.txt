@@ -1,6 +1,6 @@
 if(MSVC)
-    set(SODIUM_STATIC_LIB_DEBUG ${CMAKE_CURRENT_SOURCE_DIR}/bin/x64/Debug/v142/static/libsodium.lib)
-    set(SODIUM_STATIC_LIB_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/bin/x64/Release/v142/static/libsodium.lib)
+    set(SODIUM_STATIC_LIB_DEBUG ${CMAKE_CURRENT_SOURCE_DIR}/bin/x64/Debug/v143/static/libsodium.lib)
+    set(SODIUM_STATIC_LIB_RELEASE ${CMAKE_CURRENT_SOURCE_DIR}/bin/x64/Release/v143/static/libsodium.lib)
 
     include_external_msproject(libsodium ${CMAKE_CURRENT_SOURCE_DIR}/builds/msvc/vs2019/libsodium/libsodium.vcxproj)
     set_target_properties(libsodium PROPERTIES
