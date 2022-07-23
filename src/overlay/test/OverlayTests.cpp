@@ -1735,3 +1735,26 @@ TEST_CASE("peer is purged from database after few failures",
     REQUIRE(!peerManager.load(localhost(cfg2.PEER_PORT)).second);
 }
 }
+
+TEST_CASE("loopback peer sends hello with a wrong fee ID", "[overlay][connections]")
+{
+    VirtualClock clock;
+    Config const& cfg1 = getTestConfig(0);
+    Config const& cfg2 = getTestConfig(1);
+    Config cfg3(cfg2);
+    cfg3.FEE_POOL_PUBLIC_KEY = "GBRPYHIL2CI3FNQ4BXLFMNDLFJUNPU2HY3ZMFSHONUCEOASW7QC7OX2H";
+    auto app1 = createTestApplication(clock, cfg1);
+    auto app2 = createTestApplication(clock, cfg3);
+
+    LoopbackPeerConnection conn(*app1, *app2);
+    testutil::crankSome(clock);
+
+    REQUIRE(!conn.getInitiator()->isAuthenticated());
+    REQUIRE(!conn.getAcceptor()->isAuthenticated());
+
+    REQUIRE(doesNotKnow(*app1, *app2));
+    REQUIRE(doesNotKnow(*app2, *app1));
+
+    testutil::shutdownWorkScheduler(*app2);
+    testutil::shutdownWorkScheduler(*app1);
+}

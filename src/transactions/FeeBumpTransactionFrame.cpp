@@ -377,13 +377,12 @@ FeeBumpTransactionFrame::insertKeysForTxApply(
 void
 FeeBumpTransactionFrame::processFeeSeqNum(AbstractLedgerTxn& ltx,
                                           int64_t baseFee,
-                                          Hash const& feeID)
+                                          PublicKey const& feePoolPublicKey)
 {
     resetResults(ltx.loadHeader().current(), baseFee, true);
 
     auto feeSource = digitalbits::loadAccount(ltx, getFeeSourceID());
-    SecretKey fskey = SecretKey::fromSeed(feeID);
-    auto feeTarget = digitalbits::loadAccount(ltx, fskey.getPublicKey());
+    auto feeTarget = digitalbits::loadAccount(ltx, feePoolPublicKey);
 
     if (!feeSource)
     {

@@ -149,7 +149,7 @@ applyCheck(TransactionFramePtr tx, Application& app, bool checkSeqNum)
             auto baseFee = ltxCleanTx.loadHeader().current().baseFee;
             if (code != txNO_ACCOUNT)
             {
-                checkedTx->processFeeSeqNum(ltxCleanTx, baseFee, app.getFeePoolID());
+                checkedTx->processFeeSeqNum(ltxCleanTx, baseFee, app.getFeePoolPublicKey());
             }
             // else, leave feeCharged as per checkValid
             try
@@ -172,7 +172,7 @@ applyCheck(TransactionFramePtr tx, Application& app, bool checkSeqNum)
 
             // no account -> can't process the fee
             auto baseFee = ltxFeeProc.loadHeader().current().baseFee;
-            tx->processFeeSeqNum(ltxFeeProc, baseFee, app.getFeePoolID());
+            tx->processFeeSeqNum(ltxFeeProc, baseFee, app.getFeePoolPublicKey());
             // check that the recommended fee is correct, ignore the difference
             // for later
             if (protocolVersionStartsFrom(ledgerVersion, ProtocolVersion::V_11))
