@@ -79,22 +79,21 @@ jobs:
            sudo cp /usr/local/bin/digitalbits-core ./xdb-core
            sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
-      # Problems with pushing docker images in cloudsmith, comment for now
-      # - name: Login into cloudsmith
-      #   run: docker login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} docker.digitalbits.io
+      - name: Login into cloudsmith
+        run: docker login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} docker.digitalbits.io
 
-      # - name: Build Docker Image
-      #   run: docker build -f Dockerfile.prebuild -t digitalbits-core .
+      - name: Build Docker Image
+        run: docker build -f Dockerfile.prebuild -t digitalbits-core .
 
-      # - name: Tag Docker Images
-      #   run: |
-      #     docker tag digitalbits-core docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-      #     docker tag digitalbits-core docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
+      - name: Tag Docker Images
+        run: |
+          docker tag digitalbits-core docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
+          docker tag digitalbits-core docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
 
-      # - name: Push Docker Images
-      #   run: |
-      #     docker push docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-      #     docker push docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
+      - name: Push Docker Images
+        run: |
+          docker push docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
+          docker push docker.digitalbits.io/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
 
       - name: Make .deb package
         run: |
