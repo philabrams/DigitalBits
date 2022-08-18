@@ -384,6 +384,7 @@ class Config : public std::enable_shared_from_this<Config>
     bool PUBLIC_HTTP_PORT;    // if you accept commands from not localhost
     int HTTP_MAX_CLIENT;      // maximum number of http clients, i.e backlog
     std::string NETWORK_PASSPHRASE; // identifier for the network
+    std::string FEE_PASSPHRASE; // identifier for the fees pool account, deprecated
     std::string FEE_POOL_PUBLIC_KEY; // identifier for the fees pool account
 
     // overlay config

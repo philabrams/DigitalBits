@@ -1268,6 +1268,11 @@ Config::processConfig(std::shared_ptr<cpptoml::table> t)
             {
                 NETWORK_PASSPHRASE = readString(item);
             }
+            else if (item.first == "FEE_PASSPHRASE")
+            {
+                LOG_WARNING(DEFAULT_LOG, "FEE_PASSPHRASE is deprecated, use FEE_POOL_PUBLIC_KEY");
+                FEE_PASSPHRASE = readString(item);
+            }
             else if (item.first == "FEE_POOL_PUBLIC_KEY")
             {
                 FEE_POOL_PUBLIC_KEY = readString(item);

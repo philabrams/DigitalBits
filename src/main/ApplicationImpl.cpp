@@ -105,7 +105,18 @@ ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
     std::srand(static_cast<uint32>(clock.now().time_since_epoch().count()));
 
     mNetworkID = sha256(mConfig.NETWORK_PASSPHRASE);
-    mFeePoolPublicKey = KeyUtils::fromStrKey<PublicKey>(mConfig.FEE_POOL_PUBLIC_KEY);
+
+    if (!mConfig.FEE_PASSPHRASE.empty())
+    {
+        // Backward compatibility
+        SecretKey fskey = SecretKey::fromSeed(sha256(mConfig.FEE_PASSPHRASE));
+        mFeePoolPublicKey = fskey.getPublicKey();
+    }
+    else
+    {
+        mFeePoolPublicKey = KeyUtils::fromStrKey<PublicKey>(
+            mConfig.FEE_POOL_PUBLIC_KEY);
+    }
 
     TracyAppInfo(DIGITALBITS_CORE_VERSION.c_str(), DIGITALBITS_CORE_VERSION.size());
     TracyAppInfo(mConfig.NETWORK_PASSPHRASE.c_str(),
