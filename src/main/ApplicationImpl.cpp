@@ -106,6 +106,11 @@ ApplicationImpl::ApplicationImpl(VirtualClock& clock, Config const& cfg)
 
     mNetworkID = sha256(mConfig.NETWORK_PASSPHRASE);
 
+    if (!mConfig.FEE_PASSPHRASE.empty() && !mConfig.FEE_POOL_PUBLIC_KEY.empty())
+    {
+        throw std::runtime_error("Incorrect configuration, provide either FEE_PASSPHRASE or FEE_POOL_PUBLIC_KEY");
+    }
+
     if (!mConfig.FEE_PASSPHRASE.empty())
     {
         // Backward compatibility
