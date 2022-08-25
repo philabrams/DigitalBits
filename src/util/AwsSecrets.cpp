@@ -21,19 +21,22 @@ std::string getSecretById(const std::string& secretId)
     {
         LOG_INFO(DEFAULT_LOG, "Secret retrieval successful, ARN {}",
             secretId);
-        auto& result = outcome.GetResult();
-        auto& secretStringAws = result.GetSecretString(); 
+
+        auto& secretStringAws = outcome.GetResult().GetSecretString(); 
         std::string output(secretStringAws.c_str(), secretStringAws.size());
 
         return  output;
     }
     else
     {
-        auto message = fmt::format("Secret retrieval failed {}, error {}",
-            secretId, outcome.GetError());
-        LOG_INFO(DEFAULT_LOG, message);
+        auto& errorMsgAws = outcome.GetError().GetMessage();
+        std::string errorMsg(errorMsgAws.c_str(), errorMsgAws.size());
 
-        throw std::runtime_error(message);
+        LOG_INFO(DEFAULT_LOG, "Secret retrieval failed, ARN {}, error {}",
+            secretId, errorMsg);
+
+        throw std::runtime_error(fmt::format(
+            "Secret retrieval failed, ARN {}", secretId));
     }
 
     return "";
