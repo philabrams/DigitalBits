@@ -64,4 +64,5 @@ target_include_directories(lib3rdparty PRIVATE
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/src>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/asio/asio/include>
     $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/fmt/include>
+    $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/lib/spdlog/include>
 )

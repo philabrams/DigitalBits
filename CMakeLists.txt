@@ -20,7 +20,7 @@ if(MSVC)
 endif()
 
 # Configuration options
-option(USE_SPDLOG_OPTION "Use spdlog library" OFF)
+option(USE_SPDLOG_OPTION "Use spdlog library" ON)
 option(BUILD_TESTS_OPTION "Build unit test files" ON)
 option(USE_POSTGRES_OPTION "Use PostgreSQL for storage" ON)
 option(USE_TRACY_OPTION "Enable profiling" OFF)

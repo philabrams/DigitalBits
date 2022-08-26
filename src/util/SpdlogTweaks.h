@@ -8,7 +8,9 @@
 // the out-of-line (.cpp) portions of spdlog, and also before the inclusion of
 // the inline (.h) portions of spdlog.
 
-#define SPDLOG_COMPILED_LIB
+#ifndef SPDLOG_COMPILED_LIB // AWS SDK also defines this macro
+    #define SPDLOG_COMPILED_LIB
+#endif
 #define SPDLOG_FMT_EXTERNAL
 #define SPDLOG_NO_THREAD_ID
 #define SPDLOG_NO_TLS
