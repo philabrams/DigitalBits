@@ -1766,6 +1766,15 @@ HerderImpl::herderOutOfSync()
     ZoneScoped;
     CLOG_WARNING(Herder, "Lost track of consensus");
 
+    auto numOrgs = mApp.getConfig().QUORUM_SET.innerSets.size();
+
+    if (numOrgs < 4)
+    {
+        CLOG_WARNING(Herder,
+                     "Faulty quorum set, {} organizations is not enough for consensus",
+                     numOrgs);
+    }
+
     auto s = getJsonInfo(20).toStyledString();
     CLOG_WARNING(Herder, "Out of sync context: {}", s);
 

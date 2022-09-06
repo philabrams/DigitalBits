@@ -1250,6 +1250,15 @@ Config::validateConfig(ValidationThresholdLevels thresholdLevel)
             "no validators defined in VALIDATORS/QUORUM_SET");
     }
 
+    auto numOrgs = QUORUM_SET.innerSets.size();
+
+    if (numOrgs < 4)
+    {
+        LOG_WARNING(DEFAULT_LOG,
+                    "Faulty quorum set, {} organizations is not enough for consensus",
+                    numOrgs);
+    }
+
     // calculates nodes that would break quorum
     auto selfID = NODE_SEED.getPublicKey();
     auto r = LocalNode::findClosestVBlocking(QUORUM_SET, nodes, nullptr);
