@@ -1766,13 +1766,25 @@ HerderImpl::herderOutOfSync()
     ZoneScoped;
     CLOG_WARNING(Herder, "Lost track of consensus");
 
+    std::set<NodeID> nodes;
+    LocalNode::forAllNodes(mApp.getConfig().QUORUM_SET, [&](NodeID const& n) {
+        nodes.insert(n);
+        return true;
+    });
+
     auto numOrgs = mApp.getConfig().QUORUM_SET.innerSets.size();
 
-    if (numOrgs < 4)
+    if (numOrgs == 0 && nodes.size() < 3)
     {
-        CLOG_WARNING(Herder,
-                     "Faulty quorum set, {} organizations is not enough for consensus",
-                     numOrgs);
+        LOG_WARNING(DEFAULT_LOG,
+                    "Faulty quorum set, {} node(s) is not enough for consensus",
+                    nodes.size());
+    } 
+    else if (numOrgs < 4)
+    {
+        LOG_WARNING(DEFAULT_LOG,
+                    "Faulty quorum set, {} organization(s) is not enough for consensus",
+                    numOrgs);
     }
 
     auto s = getJsonInfo(20).toStyledString();

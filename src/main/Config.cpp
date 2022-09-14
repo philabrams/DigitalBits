@@ -1255,7 +1255,7 @@ Config::validateConfig(ValidationThresholdLevels thresholdLevel)
     if (numOrgs < 4)
     {
         LOG_WARNING(DEFAULT_LOG,
-                    "Faulty quorum set, {} organizations is not enough for consensus",
+                    "Faulty quorum set, {} organization(s) is not enough for consensus",
                     numOrgs);
     }
 
