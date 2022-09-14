@@ -1252,7 +1252,7 @@ Config::validateConfig(ValidationThresholdLevels thresholdLevel)
 
     auto numOrgs = QUORUM_SET.innerSets.size();
 
-    if (numOrgs < 4)
+    if (thresholdLevel != ValidationThresholdLevels::SIMPLE_MAJORITY && numOrgs < 4)
     {
         LOG_WARNING(DEFAULT_LOG,
                     "Faulty quorum set, {} organization(s) is not enough for consensus",
