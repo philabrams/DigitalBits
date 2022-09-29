@@ -1,8 +1,8 @@
 name: Beta Release For All Platforms
-# Controls when the action will run. 
+# Controls when the action will run.
 on:
   push:
-    branches: 
+    branches:
       - 'beta'
   workflow_dispatch:
 jobs:
@@ -26,7 +26,8 @@ jobs:
         with:
           tag: ${{ steps.bump_version.outputs.tag }}
           bodyFile: "README.md"
-          token: ${{ secrets.GITHUB_TOKEN }}   
+          token: ${{ secrets.GITHUB_TOKEN }}
+
   linuxbuild:
     needs: tagbump
     runs-on: ubuntu-latest
@@ -36,6 +37,7 @@ jobs:
       - uses: actions/checkout@v2
         with:
           fetch-depth: '0'
+
       - name: Get Latest Tag
         id: previoustag
         uses: WyriHaximus/github-action-get-previous-tag@v1
@@ -51,8 +53,13 @@ jobs:
           parallel gcc-8 g++-8 cpp-8 unzip curl \
           python3-pip ruby ruby-dev rubygems python3-setuptools 
           pip3 install wheel
-          pip3 install cloudsmith-cli
           sudo gem install --no-document fpm
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v1
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v1
 
       - name: Build the app    
         run: |
@@ -65,21 +72,27 @@ jobs:
            sudo cp /usr/local/bin/digitalbits-core ./xdb-core
            sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
-      - name: Login into cloudsmith
-        run: docker login -u ${{ secrets.REGISTRY_USERNAME }} -p ${{ secrets.REGISTRY_PASSWORD }} docker.cloudsmith.io
+      - name: Log in to the Container registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build Docker Image
-        run: docker build -f Dockerfile.prebuild -t digitalbits-core .
-
-      - name: Tag Docker Images
-        run: |
-          docker tag digitalbits-core docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-          docker tag digitalbits-core docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
-
-      - name: Push Docker Images
-        run: |
-          docker push docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-          docker push docker.cloudsmith.io/xdb-foundation/digitalbits-core$(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "/beta"; fi;])/digitalbits-core:latest
+      - name: Build Beta Image
+        if: contains(steps.previoustag.outputs.tag, 'beta')
+        id: docker_build_beta
+        uses: docker/build-push-action@v2
+        with:
+          push: true
+          file: Dockerfile.prebuild
+          tags: |
+            ghcr.io/xdbfoundation/beta/digitalbits-core:${{ steps.previoustag.outputs.tag }}
+            ghcr.io/xdbfoundation/beta/digitalbits-core:latest
+      
+      - name: Beta Image digest
+        if: contains(steps.previoustag.outputs.tag, 'beta')
+        run: echo ${{ steps.docker_build_beta.outputs.digest }}
 
       - name: Make .deb package
         run: |
@@ -93,26 +106,23 @@ jobs:
           sudo alien -r -k $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
           sudo cp digitalbits-core-linux-amd64.tar.gz $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
 
-      - name: Upload to cloudsmith.io
-        run: |
-          export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
-          export PATH=$PATH:$HOME/.local/bin
-        
-          cloudsmith push deb xdb-foundation/digitalbits-core/any-distro/any-version $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          cloudsmith push rpm xdb-foundation/digitalbits-core/any-distro/any-version $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core-${{ steps.previoustag.outputs.tag }}.x86_64.rpm
-          cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+      - uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "beta-digitalbits-core*"
+          tag: ${{ steps.previoustag.outputs.tag }}
+          bodyFile: "README.md"
+          omitBodyDuringUpdate: true
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-  # This workflow contains a single job called "build"
   macosbuild:
     needs: tagbump
-    # The type of runner that the job will run on
     runs-on: macos-latest
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
           fetch-depth: '0'
+
       - name: Get Latest Tag
         id: previoustag
         uses: WyriHaximus/github-action-get-previous-tag@v1
@@ -121,7 +131,6 @@ jobs:
         run: |
           brew install automake
           brew install libpqxx 
-          pip install --upgrade cloudsmith-cli
 
       - name: Build the app    
         run: |
@@ -135,23 +144,29 @@ jobs:
            sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core     
            sudo tar -czvf digitalbits-core-darwin-amd64.tar.gz /opt/digitalbits/digitalbits-core
          
-      - name: Push MasOS build to cloudsmith
+      - name: Prepare tarball
         run: |
             export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-            sudo cp digitalbits-core-darwin-amd64.tar.gz $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
-            sudo CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }} cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz 
+            sudo cp digitalbits-core-darwin-amd64.tar.gz $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz
+
+      - uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "beta-digitalbits-core*"
+          tag: ${{ steps.previoustag.outputs.tag }}
+          bodyFile: "README.md"
+          omitBodyDuringUpdate: true
+          token: ${{ secrets.GITHUB_TOKEN }}
       
   windowsbuild:
     needs: tagbump
-    # The type of runner that the job will run on
     runs-on: windows-latest
-    # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
           fetch-depth: '0'
           submodules: recursive
+
       - name: Install PostgresQL
         run: |
           curl -L -o postgresql.exe https://sbp.enterprisedb.com/getfile.jsp?fileid=1257550
@@ -168,6 +183,7 @@ jobs:
           mkdir -p "C:\Program Files\PostgreSQL\9.5\include"
           cp -r pgsql\include\* "C:\Program Files\PostgreSQL\9.5\include\"
           dir "C:\Program Files\PostgreSQL\9.5\include"
+
       - name: Set up Cygwin
         uses: egor-tensin/setup-cygwin@v3
         with:
@@ -189,43 +205,16 @@ jobs:
       - name: Build Solution
         run: |
             msbuild.exe Builds\VisualStudio\digitalbits-core.sln /p:platform="x64" /p:configuration="Release" /p:AdditionalLibPaths="C:\Program Files\PostgreSQL\9.5\include"
-      - uses: actions/upload-artifact@v2
-        with:
-          name: digitalbits-core.exe
-          path: Builds\VisualStudio\x64\Release\digitalbits-core.exe
 
-  pushwindows:
-    needs: windowsbuild
-    runs-on: ubuntu-latest
-    # Steps represent a sequence of tasks that will be executed as part of the job
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: '0'
-      # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
-      - uses: actions/download-artifact@v2
-        with:
-          name: digitalbits-core.exe
-
-      - name: Get Latest Tag
-        id: previoustag
-        uses: WyriHaximus/github-action-get-previous-tag@v1
-
-      - name: Set up Python 3.8
-        uses: actions/setup-python@v2
-        with:
-            python-version: 3.8
-      - name: Install dependencies
+      - name: Prepare zip archive
         run: |
-            python -m pip install --upgrade pip
-            pip install cloudsmith-cli==0.26.0
-            pip uninstall click -y
-            pip install click==7.1.2
-      - name: Make archive
-        run: tar -zcvf $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz digitalbits-core.exe
+          Compress-Archive Builds\VisualStudio\x64\Release\digitalbits-core.exe beta-digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.zip
 
-      - name: push to cloudsmith
-        run:  |
-          export CLOUDSMITH_API_KEY=${{ secrets.CLOUDSMITH_API_KEY }}
-          export PATH=$PATH:$HOME/.local/bin
-          cloudsmith push raw xdb-foundation/digitalbits-core $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.tar.gz
+      - uses: ncipollo/release-action@v1
+        with:
+          allowUpdates: true
+          artifacts: "beta-digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.zip"
+          tag: ${{ steps.previoustag.outputs.tag }}
+          bodyFile: "README.md"
+          omitBodyDuringUpdate: true
+          token: ${{ secrets.GITHUB_TOKEN }}
