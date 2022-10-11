@@ -28,10 +28,11 @@ jobs:
       - name: Build the app    
         run: |
            ./autogen.sh
-           ./configure  
+           ./configure
+           export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
            make -j`nproc`
            sudo make install
-           
+
       - name: 'Upload Artifact'
         uses: actions/upload-artifact@v2
         with:

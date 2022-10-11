@@ -2,51 +2,51 @@ Installation Instructions
 
 ==================
 ## Prebuild software
-DigitalBits.io publishes software packages to the cloudsmith.io repository https://cloudsmith.io/~xdb-foundation/repos/digitalbits-core/packages/
+DigitalBits.io publishes software packages to the [GitHub releases](https://github.com/xdbfoundation/DigitalBits/releases)
 
 Packages available as:
-   - .deb and .rpm packages and 
+   - .deb and .rpm packages
    - prebuild binaries for windows, linux and macos
-   - docker image.  
+   - docker image. See [GitHub Packages](https://github.com/xdbfoundation/DigitalBits/pkgs/container/digitalbits-core)
 
 ## DEB-based
 
-1. Configure digitalbits-core repository from cloudsmith.io:
-
-        curl -1sLf 'https://archive.digitalbits.io/public/digitalbits-core/setup.deb.sh' | sudo -E bash
+1. Download digitalbits-core package from GitHub Releases:
+        
+        curl -Lo digitalbits-core.deb 'https://github.com/xdbfoundation/DigitalBits/releases/download/${VERSION}/digitalbits-core_${VERSION}_amd64.deb'
 
 2. Install digitalbits-core package:
 
-        sudo apt-get install digitalbits-core
+        sudo dpkg -i digitalbits-core.deb
 
 
 ## RPM-based
-1. Configure digitalbits-core repository from cloudsmith.io:
+1. Download digitalbits-core package from GitHub Releases:
 
-        curl -1sLf 'https://archive.digitalbits.io/public/digitalbits-core/setup.rpm.sh' | sudo -E bash
+        curl -Lo digitalbits-core.rpm 'https://github.com/xdbfoundation/DigitalBits/releases/download/${VERSION}/digitalbits-core-${VERSION}.x86_64.rpm'
 
 2. Install digitalbits-core package:
 
-        sudo yum install digitalbits-core
+        sudo rpm -i digitalbits-core.rpm
 
 ## Raw binaries
 
 - MacOS
 
-        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_darwin-amd64.tar.gz'
+        curl -LO  https://github.com/xdbfoundation/DigitalBits/releases/download/${VERSION}/digitalbits-core-${VERSION}-darwin-amd64.tar.gz
 
 - Linux
 
-        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
+        curl -LO 'https://github.com/xdbfoundation/DigitalBits/releases/download/${VERSION}/digitalbits-core_${VERSION}_linux-amd64.tar.gz'
 
 - Windows
 
-        curl -1 -O 'https://archive.digitalbits.io/public/digitalbits-core/raw/files/digitalbits-core_${VERSION}_windows-amd64.tar.gz'
+        curl -LO 'https://github.com/xdbfoundation/DigitalBits/releases/download/${VERSION}/digitalbits-core_${VERSION}_windows-amd64.tar.gz'
 
 
 ## Docker image
 
-    docker pull docker.digitalbits.io/digitalbits-core/digitalbits-core:latest
+    docker pull ghcr.io/xdbfoundation/digitalbits-core:latest
 
 ==================
 ## From sources
@@ -110,7 +110,7 @@ When building on OSX, here's some dependencies you'll need:
 - brew install libtool
 - brew install automake
 - brew install pkg-config
-- brew install libpqxx *(If ./configure later complains about libpq missing, try PKG_CONFIG_PATH='/usr/local/lib/pkgconfig')*
+- brew install libpqxx *(If ./configure later complains about libpq missing, try "export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/openssl/lib/pkgconfig", "export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/libpq/lib/pkgconfig")*
 
 ### Windows
 See [INSTALL-Windows.md](INSTALL-Windows.md)
@@ -126,22 +126,3 @@ See [INSTALL-Windows.md](INSTALL-Windows.md)
 - Type `make` or `make -j` (for aggressive parallel build)
 - Type `make check` to run tests.
 - Type `make install` to install.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
