@@ -69,7 +69,7 @@ jobs:
            make -j`nproc`
            sudo make install
            mkdir /opt/digitalbits    
-           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core     
+           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core
            sudo cp /usr/local/bin/digitalbits-core ./xdb-core
            sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
@@ -102,12 +102,12 @@ jobs:
             /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
             digitalbits-core=/etc/logrotate.d/digitalbits-core
-      
+
       - name: Make .rpm package
         run: | 
           sudo alien -r -k digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
           sudo cp digitalbits-core-linux-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
-          
+
       - uses: ncipollo/release-action@v1
         with:
           allowUpdates: true
@@ -208,7 +208,7 @@ jobs:
       - name: Build Solution
         run: |
             msbuild.exe Builds\VisualStudio\digitalbits-core.sln /p:platform="x64" /p:configuration="Release" /p:AdditionalLibPaths="C:\Program Files\PostgreSQL\9.5\include"
-      
+
       - name: Prepare zip archive
         run: |
           Compress-Archive Builds\VisualStudio\x64\Release\digitalbits-core.exe digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.zip

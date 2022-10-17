@@ -71,7 +71,7 @@ jobs:
            make -j`nproc`
            sudo make install
            mkdir /opt/digitalbits    
-           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core 
+           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core
            sudo cp /usr/local/bin/digitalbits-core ./xdb-core
            sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
@@ -104,7 +104,7 @@ jobs:
             /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
             digitalbits-core=/etc/logrotate.d/digitalbits-core
-      
+
       - name: Make .rpm package
         run: | 
           sudo alien -r -k $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
@@ -134,12 +134,13 @@ jobs:
       - name: Install deps
         run: |
           brew install automake
-          brew install libpqxx 
+          brew install libpqxx
 
       - name: Build the app    
         run: |
            export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-           export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
+           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/openssl/lib/pkgconfig
+           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/libpq/lib/pkgconfig
            ./autogen.sh
            ./configure  
            make -j2
@@ -147,7 +148,7 @@ jobs:
            sudo mkdir /opt/digitalbits    
            sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core     
            sudo tar -czvf digitalbits-core-darwin-amd64.tar.gz /opt/digitalbits/digitalbits-core
-         
+
       - name: Prepare tarball
         run: |
             export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
@@ -170,6 +171,10 @@ jobs:
         with:
           fetch-depth: '0'
           submodules: recursive
+
+      - name: Get Latest Tag
+        id: previoustag
+        uses: WyriHaximus/github-action-get-previous-tag@v1
 
       - name: Install PostgresQL
         run: |
