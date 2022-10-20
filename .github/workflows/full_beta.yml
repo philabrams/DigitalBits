@@ -12,7 +12,7 @@ jobs:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
         with:
-          fetch-depth: '0'   # This workflow contains a single job called "build"
+          fetch-depth: '0'
       - name: Github Tag Bump
         id: bump_version
         uses: anothrNick/github-tag-action@1.36.0
@@ -55,12 +55,6 @@ jobs:
           pip3 install wheel
           sudo gem install --no-document fpm
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v1
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v1
-
       - name: Build the app    
         run: |
            ./autogen.sh
@@ -68,31 +62,25 @@ jobs:
            make -j`nproc`
            sudo make install
            mkdir /opt/digitalbits    
-           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core 
+           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core
            sudo cp /usr/local/bin/digitalbits-core ./xdb-core
            sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
 
       - name: Log in to the Container registry
-        uses: docker/login-action@v2
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
+        run: echo ${{ secrets.REGISTRY_PAT }} | docker login ghcr.io -u ${{ secrets.REGISTRY_USERNAME }} --password-stdin
 
-      - name: Build Beta Image
+      - name: Build & Tag Beta Image
         if: contains(steps.previoustag.outputs.tag, 'beta')
-        id: docker_build_beta
-        uses: docker/build-push-action@v2
-        with:
-          push: true
-          file: Dockerfile.prebuild
-          tags: |
-            ghcr.io/xdbfoundation/beta/digitalbits-core:${{ steps.previoustag.outputs.tag }}
-            ghcr.io/xdbfoundation/beta/digitalbits-core:latest
-      
-      - name: Beta Image digest
+        run: |
+          docker build -f Dockerfile.prebuild -t digitalbits-core .
+          docker tag digitalbits-core ghcr.io/xdbfoundation/beta/digitalbits-core:${{ steps.previoustag.outputs.tag }}
+          docker tag digitalbits-core ghcr.io/xdbfoundation/beta/digitalbits-core:latest
+
+      - name: Push Docker Images
         if: contains(steps.previoustag.outputs.tag, 'beta')
-        run: echo ${{ steps.docker_build_beta.outputs.digest }}
+        run: |
+          docker push ghcr.io/xdbfoundation/beta/digitalbits-core:${{ steps.previoustag.outputs.tag }}
+          docker push ghcr.io/xdbfoundation/beta/digitalbits-core:latest
 
       - name: Make .deb package
         run: |
@@ -100,7 +88,7 @@ jobs:
             /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
             digitalbits-core=/etc/logrotate.d/digitalbits-core
-      
+
       - name: Make .rpm package
         run: | 
           sudo alien -r -k $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
@@ -130,12 +118,13 @@ jobs:
       - name: Install deps
         run: |
           brew install automake
-          brew install libpqxx 
+          brew install libpqxx
 
       - name: Build the app    
         run: |
            export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-           export PKG_CONFIG_PATH="/usr/local/opt/openssl/lib/pkgconfig"
+           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/openssl/lib/pkgconfig
+           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/libpq/lib/pkgconfig
            ./autogen.sh
            ./configure  
            make -j2
@@ -143,7 +132,7 @@ jobs:
            sudo mkdir /opt/digitalbits    
            sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core     
            sudo tar -czvf digitalbits-core-darwin-amd64.tar.gz /opt/digitalbits/digitalbits-core
-         
+
       - name: Prepare tarball
         run: |
             export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
@@ -166,6 +155,10 @@ jobs:
         with:
           fetch-depth: '0'
           submodules: recursive
+
+      - name: Get Latest Tag
+        id: previoustag
+        uses: WyriHaximus/github-action-get-previous-tag@v1
 
       - name: Install PostgresQL
         run: |
