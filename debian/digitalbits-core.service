@@ -1,0 +1,13 @@
+[Unit]
+Description=DigitalBits Core Service
+After=network.target
+StartLimitIntervalSec=0
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=digitalbits
+ExecStart=/usr/local/bin/digitalbits-core --conf /etc/digitalbits.cfg run
+
+[Install]
+WantedBy=multi-user.target

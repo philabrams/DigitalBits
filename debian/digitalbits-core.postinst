@@ -1,0 +1,44 @@
+#!/bin/sh
+
+set -e
+if [ "$1" = configure ]; then
+    [ "$DPKG_MAINTSCRIPT_PACKAGE" ] && quiet="--quiet" # RedHat doesn't have this
+    # Make sure the service user exists
+    if ! getent passwd digitalbits > /dev/null; then
+        adduser --system $quiet --home /var/history/buckets --no-create-home \
+            --shell /bin/bash --group --gecos "DigitalBits Core service" digitalbits
+    fi
+    # if the user was created manually, make sure the group is there as well
+    if ! getent group digitalbits > /dev/null; then
+        addgroup --system $quiet digitalbis
+    fi
+    # make sure digitalbits user in digitalbits group
+    if ! id -Gn digitalbits | grep -qw digitalbits; then
+        adduser $quiet digitalbits digitalbits
+    fi
+    # ensure no uid 0 even if user record was manually created
+    if [ "`id -u digitalbits`" -eq 0 ]; then
+        echo "The digitalbits service user must not have uid 0 (root).
+Please fix this and reinstall this package." >&2
+        exit 1
+    fi
+    if [ "`id -g digitalbits`" -eq 0 ]; then
+        echo "The digitalbits service user must not have root as primary group.
+Please fix this and reinstall this package." >&2
+        exit 1
+    fi
+
+    # ensure home directory ownership
+    mkdir -p /var/history/buckets
+    su -s /bin/sh digitalbits -c "test -O /var/history/buckets &&
+            test -G /var/history/buckets" || \
+        chown digitalbits:digitalbits /var/history/buckets
+
+    chmod -R 0770 /var/history/buckets
+    #ensure log directory ownership
+    mkdir -p /var/log/digitalbits-core/
+    su -s /bin/sh digitalbits -c "test -O /var/log/digitalbits-core &&
+            test -G /var/log/digitalbits-core" || \
+        chown digitalbits:digitalbits /var/log/digitalbits-core
+fi
+

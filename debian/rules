@@ -1,0 +1,19 @@
+#!/usr/bin/make -f
+DH_VERBOSE=1 
+#include /usr/share/dpkg/architecture.mk
+
+%:
+	dh $@
+
+
+override_dh_auto_configure:
+	dh_auto_configure -- --prefix=/usr/local
+
+#to install binary into usr/local/bin
+override_dh_usrlocal:
+
+#to bypass dwz: debian/digitalbits-core/usr/bin/digitalbits-core: Too many DIEs, not optimizing
+# on ubuntu 20:04
+override_dh_dwz:
+	dh_dwz --exclude=/usr/bin/digitalbits-core --exclude=/usr/local/bin/digitalbits-core
+
