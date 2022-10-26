@@ -66,6 +66,8 @@ jobs:
 
       - name: build, run unit test, package .deb package
         run: |
+            echo -en "packages installed"
+            dpkg -l
             #for unit tests by make check
             export PATH=$PATH:/usr/lib/postgresql/12/bin/ 
             dch -v "${{ steps.previoustag.outputs.tag }}" -D "unstable" "latest build"
