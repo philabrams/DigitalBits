@@ -52,7 +52,7 @@ jobs:
           dh-make gnupg pbuilder ubuntu-dev-tools apt-file git build-essential alien pkg-config \
           autoconf automake devscripts libtool bison clang-format flex libpq-dev libunwind-dev \
           parallel gcc-8 g++-8 cpp-8 unzip curl postgresql pandoc  \
-          python3-pip ruby ruby-dev rubygems python3-setuptools \
+          python3-pip ruby ruby-dev rubygems python3-setuptools 
           pip3 install wheel #what we need python for?
           #sudo gem install --no-document fpm #replaced by deb-buildpackage, ref https://packaging.ubuntu.com/ubuntu-packaging-guide.pdf
 
