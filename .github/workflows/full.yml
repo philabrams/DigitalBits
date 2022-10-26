@@ -63,17 +63,6 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v1
 
-      #- name: Build the app    
-      #  run: |
-      #     ./autogen.sh
-      #     ./configure  
-      #     make -j`nproc`
-      #     sudo make install
-      #     mkdir /opt/digitalbits    
-      #     sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core     
-      #     sudo cp /usr/local/bin/digitalbits-core ./xdb-core
-      #     sudo tar -czvf digitalbits-core-linux-amd64.tar.gz /opt/digitalbits/digitalbits-core
-
       - name: build, run unit test, package .deb package
         run: |
             #for unit tests by make check
@@ -92,7 +81,8 @@ jobs:
           
       - name: prepare docker package
         run: |
-            cp debian/digitalbits-core/usr/local/bin/digitalbits-core xdb-core
+          cp debian/digitalbits-core/usr/local/bin/digitalbits-core xdb-core
+            
       - name: Log in to the Container registry
         uses: docker/login-action@v2
         with:
@@ -120,111 +110,6 @@ jobs:
         with:
           allowUpdates: true
           artifacts: "digitalbits-core_${{ steps.previoustag.outputs.tag }}*, digitalbits-core-${{ steps.previoustag.outputs.tag }}*"
-          tag: ${{ steps.previoustag.outputs.tag }}
-          bodyFile: "README.md"
-          omitBodyDuringUpdate: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  macosbuild:
-    needs: tagbump
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: '0'
-
-      - name: Get Latest Tag
-        id: previoustag
-        uses: WyriHaximus/github-action-get-previous-tag@v1
-        
-      - name: Install deps
-        run: |
-          brew install automake
-          brew install libpqxx
-
-      - name: Build the app    
-        run: |
-           export PATH=$PATH:/Library/Frameworks/Python.framework/Versions/2.7/bin
-           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/openssl/lib/pkgconfig
-           export PKG_CONFIG_PATH=$PKG_CONFIG_PATH:/usr/local/opt/libpq/lib/pkgconfig
-           ./autogen.sh
-           ./configure  
-           make -j2
-           sudo make install
-           sudo mkdir /opt/digitalbits    
-           sudo cp /usr/local/bin/digitalbits-core /opt/digitalbits/digitalbits-core     
-           sudo tar -czvf digitalbits-core-darwin-amd64.tar.gz /opt/digitalbits/digitalbits-core
-           sudo cp digitalbits-core-darwin-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz
-      
-      - uses: ncipollo/release-action@v1
-        with:
-          allowUpdates: true
-          artifacts: "digitalbits-core_${{ steps.previoustag.outputs.tag }}_darwin-amd64.tar.gz"
-          omitBodyDuringUpdate: true
-          tag: ${{ steps.previoustag.outputs.tag }}
-          token: ${{ secrets.GITHUB_TOKEN }}   
-  
-  windowsbuild:
-    needs: tagbump
-    runs-on: windows-latest
-    steps:
-
-      - uses: actions/checkout@v2
-        with:
-          fetch-depth: '0'
-          submodules: recursive
-
-      - name: Get Latest Tag
-        id: previoustag
-        uses: WyriHaximus/github-action-get-previous-tag@v1
-
-      - name: Install PostgresQL
-        run: |
-          curl -L -o postgresql.exe https://sbp.enterprisedb.com/getfile.jsp?fileid=1257550
-          .\postgresql.exe --unattendedmodeui minimal --mode unattended --superpassword "password" --servicename "postgreSQL" --servicepassword "password" --serverport 5432
-          setx /M path "%path%;C:\Program Files\PostgreSQL\9.5\bin"
-          
-      #cd lib\spdlog && mkdir build && cd build && cmake .. && make -j
-      - run: |          
-          curl -L -o postgresql.zip https://sbp.enterprisedb.com/getfile.jsp?fileid=1257551
-          Expand-Archive -Path postgresql.zip -DestinationPath .
-          mkdir -p "C:\Program Files\PostgreSQL\9.5\lib"
-          cp -r pgsql\lib\* "C:\Program Files\PostgreSQL\9.5\lib\"
-          dir "C:\Program Files\PostgreSQL\9.5\lib"
-          mkdir -p "C:\Program Files\PostgreSQL\9.5\include"
-          cp -r pgsql\include\* "C:\Program Files\PostgreSQL\9.5\include\"
-          dir "C:\Program Files\PostgreSQL\9.5\include"
-
-      - name: Set up Cygwin
-        uses: egor-tensin/setup-cygwin@v3
-        with:
-          platform: x64
-          packages: flex bison sed curl gcc-core
-          
-      - name: setup-msbuild
-        uses: microsoft/setup-msbuild@v1 
-
-      - name: Setup NuGet
-        uses: NuGet/setup-nuget@v1.0.5
-      
-      - run: |
-          nuget restore Builds\VisualStudio\digitalbits-core.sln
-          
-      - name: Create Build Directory
-        run: mkdir _build
-
-      - name: Build Solution
-        run: |
-            msbuild.exe Builds\VisualStudio\digitalbits-core.sln /p:platform="x64" /p:configuration="Release" /p:AdditionalLibPaths="C:\Program Files\PostgreSQL\9.5\include"
-      
-      - name: Prepare zip archive
-        run: |
-          Compress-Archive Builds\VisualStudio\x64\Release\digitalbits-core.exe digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.zip
-
-      - uses: ncipollo/release-action@v1
-        with:
-          allowUpdates: true
-          artifacts: "digitalbits-core_${{ steps.previoustag.outputs.tag }}_windows-amd64.zip"
           tag: ${{ steps.previoustag.outputs.tag }}
           bodyFile: "README.md"
           omitBodyDuringUpdate: true
