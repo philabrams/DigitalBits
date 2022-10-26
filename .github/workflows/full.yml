@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
 jobs:
   tagbump:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu:latest
     steps:
       # Checks-out your repository under $GITHUB_WORKSPACE, so your job can access it
       - uses: actions/checkout@v2
@@ -30,7 +30,7 @@ jobs:
 
   linuxbuild:
     needs: tagbump
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu:latest
     steps:
       - uses: actions/checkout@v2
         with:
@@ -43,6 +43,7 @@ jobs:
 
       - name: Install deps
         run: |
+          lsb_release -a 
           sudo apt-get update
           #for the sake of PPA toolchain apt install
           sudo apt-get install -y software-properties-common 
