@@ -21,6 +21,4 @@ override_dh_dwz:
 # postgresql cli tooling called by unit tests refuses run by ROOT(and has no way to check we use fakeroot(1))
 # username digitalbits_build_tests_exec has to exists - to be added before deb-buildpackage called
 override_dh_auto_test:
-	ifeq (,$(filter nocheck,$(DEB_BUILD_OPTIONS)))
 	runuser -u digitalbits_build_tests_exec make  check VERBOSE=1
-	endif
