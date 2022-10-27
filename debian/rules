@@ -17,3 +17,8 @@ override_dh_usrlocal:
 override_dh_dwz:
 	dh_dwz --exclude=/usr/bin/digitalbits-core --exclude=/usr/local/bin/digitalbits-core
 
+#debian package requires ROOT uid or fakeroot(1) to set fs perms in binary outcome.
+# postgresql cli tooling called by unit tests refuses run by ROOT(and has no way to check we use fakeroot(1))
+# uid 1000 has to exists - to be added before deb-buildpackage called
+dh_auto_test
+	setpriv --reuid=1000 --regid=1000 --init-groups make check VERBOSE=1
