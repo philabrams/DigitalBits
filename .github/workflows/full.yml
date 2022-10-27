@@ -44,6 +44,7 @@ jobs:
       - name: Install deps
         run: |
           lsb_release -a 
+          id -a
           sudo apt-get update
           #for the sake of PPA toolchain apt install
           sudo apt-get install -y software-properties-common 
@@ -69,7 +70,7 @@ jobs:
             id -a
             # we dont execute unit tests from root. Even when have to execute build form fakeroot(1)
             # - otherwise debian package fails to set FS permissions in resulting binary
-            adduser --disabled-password --gecos "" digitalbits_build_tests_exec
+            sudo adduser --disabled-password --gecos "" digitalbits_build_tests_exec
             #per ./INSTALL.md
             ./autogen.sh
             #for unit tests by make check
