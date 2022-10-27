@@ -72,6 +72,9 @@ jobs:
             # we dont execute unit tests from root. Even when have to execute build form fakeroot(1)
             # - otherwise debian package fails to set FS permissions in resulting binary
             sudo adduser --disabled-password --gecos "" digitalbits_build_tests_exec
+            sudo su digitalbits_build_tests_exec -c 'mkdir /tmp/blabla'
+            ls -la /tmp
+            exit 1
             #per ./INSTALL.md
             ./autogen.sh
             #for unit tests by make check
