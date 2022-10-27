@@ -66,11 +66,12 @@ jobs:
 
       - name: build, run unit test, package .deb package
         run: |
-            echo -en "packages installed"
-            dpkg -l
+            #per ./INSTALL.md
+            ./autogen.sh
             #for unit tests by make check
             export PATH=$PATH:/usr/lib/postgresql/12/bin/ 
             dch -v "${{ steps.previoustag.outputs.tag }}" -D "unstable" "latest build"
+            #dont build with root privs and run automake and configure by debian package tooling
             fakeroot dpkg-buildpackage -b 
             # fpm -f -s dir -t deb -n $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core -v ${{ steps.previoustag.outputs.tag }} --deb-use-file-permissions \
             # /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
