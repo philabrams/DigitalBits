@@ -80,8 +80,10 @@ jobs:
             #for unit tests by make check
             export PATH=$PATH:/usr/lib/postgresql/12/bin/ 
             dch -v "${{ steps.previoustag.outputs.tag }}" -D "unstable" "latest build"
-            #dont build with root privs and run automake and configure by debian package tooling
-            fakeroot dpkg-buildpackage -b 
+            #debian package tooling has to be run from root, to set FS perms inside resulted binary(?)
+            #fakeroot(1) is a workaround, sets fake UID and fake behavuor of sensitive syscalls by LD_PRELOAD but can not apply it here bc
+            #digtalbits unit test suite depends postgress tooling(pg_ctl) which refuses be run from root(good) and has aggressie checks of FS ownership, that can not be faked in fakeroot environment 
+            sudo dpkg-buildpackage -b 
             # fpm -f -s dir -t deb -n $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core -v ${{ steps.previoustag.outputs.tag }} --deb-use-file-permissions \
             # /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             # digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
