@@ -71,7 +71,7 @@ jobs:
             id -a
             # we dont execute unit tests from root. Even when have to execute build form fakeroot(1)
             # - otherwise debian package fails to set FS permissions in resulting binary
-            sudo adduser --disabled-password --gecos "" digitalbits_build_tests_exec
+            #sudo adduser --disabled-password --gecos "" digitalbits_build_tests_exec
             #per ./INSTALL.md
             ./autogen.sh
             #for unit tests by make check
@@ -80,7 +80,7 @@ jobs:
             #debian package tooling has to be run from root, to set FS perms inside resulted binary(?)
             #fakeroot(1) is a workaround, sets fake UID and fake behavuor of sensitive syscalls by LD_PRELOAD but can not apply it here bc
             #digtalbits unit test suite depends postgress tooling(pg_ctl) which refuses be run from root(good) and has aggressie checks of FS ownership, that can not be faked in fakeroot environment 
-            sudo dpkg-buildpackage -b 
+            dpkg-buildpackage -b 
             # fpm -f -s dir -t deb -n $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core -v ${{ steps.previoustag.outputs.tag }} --deb-use-file-permissions \
             # /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             # digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
