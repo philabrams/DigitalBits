@@ -69,27 +69,24 @@ jobs:
       - name: build, run unit test, package .deb package
         run: |
             id -a
-            # we dont execute unit tests from root. Even when have to execute build form fakeroot(1)
-            # - otherwise debian package fails to set FS permissions in resulting binary
-            #sudo adduser --disabled-password --gecos "" digitalbits_build_tests_exec
             #per ./INSTALL.md
             ./autogen.sh
             #for unit tests by make check
             export PATH=$PATH:/usr/lib/postgresql/12/bin/ 
+            #for ubuntu/debina dpkg build, version has to be defined in ./debian/changelog file 
             dch -v "${{ steps.previoustag.outputs.tag }}" -D "unstable" "latest build"
-            #debian package tooling has to be run from root, to set FS perms inside resulted binary(?)
-            #fakeroot(1) is a workaround, sets fake UID and fake behavuor of sensitive syscalls by LD_PRELOAD but can not apply it here bc
-            #digtalbits unit test suite depends postgress tooling(pg_ctl) which refuses be run from root(good) and has aggressie checks of FS ownership, that can not be faked in fakeroot environment 
             dpkg-buildpackage -b 
             # fpm -f -s dir -t deb -n $(if [[ $GITHUB_REF_NAME != 'master' ]]; then  echo "beta"; fi;])-digitalbits-core -v ${{ steps.previoustag.outputs.tag }} --deb-use-file-permissions \
             # /opt/digitalbits/digitalbits-core=/usr/local/bin/digitalbits-core \
             # digitalbits-core.service=/etc/systemd/system/digitalbits-core.service \
             # digitalbits-core=/etc/logrotate.d/digitalbits-core
+            cp ../digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
       
       - name: Make .rpm package
         run: | 
           sudo alien -r -k digitalbits-core_${{ steps.previoustag.outputs.tag }}_amd64.deb
-          sudo cp digitalbits-core-linux-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
+          
+          #sudo cp digitalbits-core-linux-amd64.tar.gz digitalbits-core_${{ steps.previoustag.outputs.tag }}_linux-amd64.tar.gz 
           
       - name: prepare docker package
         run: |
